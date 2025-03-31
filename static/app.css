@@ -1,0 +1,469 @@
+
+:root{
+    --Grey-Line:#E9E9E9;
+    --Black:#2F2F2F;
+    --Grey-Text:#696969;
+    --Wtite:#FFF;
+    --Grey-Background:#F2F2F2;
+}
+*{
+    margin:0;
+    padding:0;
+}
+button {
+    display: inline-block;
+    font-weight: 400;
+    color: #212529;
+    text-align: center;
+    vertical-align: middle;
+    cursor: pointer;
+    background-color:  #28a745; /* #28a745 초록색 배경 007bff; 파랑 */
+    border: 1px solid transparent;
+    padding: .375rem .75rem;
+    font-family: 'Arial', sans-serif; /* 버튼의 글꼴을 Arial로 설정 */
+    font-size: 14px; /* 버튼의 글자 크기를 14px로 설정 */
+    line-height: 1.5;
+    border-radius: .25rem;
+    transition: color .15s ease-in-out,background-color .15s ease-in-out,border-color .15s ease-in-out,box-shadow .15s ease-in-out;
+    }
+
+
+body {
+    /* 모든 화면 크기에 적용할 기본 스타일을 여기에 작성합니다. */
+}
+
+@media (max-width: 600px) {
+    body {
+        /* 화면이 600px 이하일 때 적용할 스타일을 여기에 작성합니다. */
+    }
+}
+
+@media (min-width: 601px) {
+    body {
+    position: relative;
+    overflow: hidden;
+    width:100vw;
+    height:100vh;
+    display: flex;
+    flex-direction: column;
+    }
+}
+
+
+header{
+    padding:0 50px;
+    border-bottom: 1px solid var(--Grey-Line,#E9E9E9);
+    background: #FFF;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+header > div:first-child{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap:60px;
+}
+header > div:first-child > ul{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap:50px;
+}
+header > div:first-child > ul > li{
+    display: block;
+    padding:14px 0;
+    min-width: 65px;
+    text-align: center;
+    font-size: 14px;
+
+}
+header > div:first-child > ul > li.active{
+    border-bottom: 2px var(--Black) solid;
+}
+header > div:last-child{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap:8px;
+}
+header > div:last-child > button{
+    padding:6px 10px;
+    border:none;
+    text-align: center;
+    font-family: Noto Sans KR;
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 18px; /* 138.462% */
+}
+
+h3{
+    color: var(--Black, #2F2F2F);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 15px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 20px; /* 133.333% */
+    margin-bottom: 8px;
+}
+h3.description{
+    margin-bottom: 6px;
+}
+table{
+    border-collapse: collapse;
+    border-bottom: 1px solid var(--Grey-Text, #696969);
+    width: 100%;
+}
+table th{
+    border-top: 1px solid var(--Grey-Text, #696969);
+    background: var(--Grey-Line, #E9E9E9);
+    padding:6px 10px;
+    color: var(--Black, #2F2F2F);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 14px; /* 127.273% */
+    min-height: 26px;
+}
+table td{
+    padding:10px 10px;
+    border-top: 1px solid var(--Grey-Line,#E9E9E9);
+    height: 19px;
+    font-size: 14px;
+}
+table#order td{
+    padding:0 10px;
+    min-height: auto;
+}
+
+section{
+    padding:20px 50px 50px;
+    flex:1;
+    display: grid;
+    grid-template-rows: calc(100% - 270px) 226px;
+    grid-template-columns: 326px calc(100% - 780px) 326px;
+    column-gap: 20px;
+    row-gap: 22px;
+}
+section > div{
+    display: flex;
+    flex-direction: column;
+}
+.textarea{
+    width: 100%;
+    padding:12px;
+    box-sizing: border-box;
+    border-radius: 4px;
+    border: 1px solid var(--Grey-Line, #E9E9E9);
+    text-align: right;
+    height: 100%;
+}
+.textarea textarea{
+    width: 100%;
+    border:none;
+    resize: none;
+    height: calc(100% - 30px);
+}
+.textarea button{
+    padding:6px 8px;
+    border-radius: 2px;
+    background: var(--Black, #2F2F2F);
+    color: var(--Wtite, #FFF);
+    text-align: center;
+    font-family: Spoqa Han Sans Neo;
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 18px; /* 138.462% */
+    border:none;
+}
+.btn-container{
+    display: flex;
+    flex-direction: column;
+    gap:16px;
+    padding-top:50px;
+    justify-content: center;
+}
+.btn-container button{
+    width:100%;
+    height: 70px;
+    text-align: center;
+    font-family: Noto Sans KR;
+    font-size: 18px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 24px; /* 133.333% */
+    border:none;
+}
+p.description{
+    color: var(--Grey-Text, #696969);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 14px; /* 127.273% */
+    margin-bottom: 10px;
+}
+.chat{
+    padding:12px;
+    border-radius: 4px;
+    border: 1px solid var(--Grey-Line, #E9E9E9);
+    height: 100%;
+    overflow: scroll;
+}
+.chat > div{
+    display: flex;
+    flex-direction: column;
+    gap:14px;
+    height: 100%;
+}
+.chat > div > div {
+    display: flex;
+    flex:1 0 20px;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap:16px;
+}
+.chat > div > div> p {
+    flex:1;
+    word-break: break-all;
+    color: var(--Black, #2F2F2F);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 20px; /* 166.667% */
+}
+.chat > div > div> b{
+    color: var(--Black, #2F2F2F);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 500;
+    line-height: 20px; /* 166.667% */
+}
+.chat > div > div> b >span{
+    display: inline-flex;
+    background: var(--Grey-Line);
+    width: 20px;
+    height: 20px;
+    border-radius: 20px;
+    justify-content: center;
+    align-items: center;
+    margin-right:8px;
+    font-weight: 700;
+}
+.chat > div >div >span{
+    color: var(--Grey-Text, #696969);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 20px; /* 166.667% */
+}
+#chart{
+    flex:1;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--Grey-Text, #696969);
+    border-bottom: 1px solid var(--Grey-Text, #696969);
+}
+#chart canvas{
+    flex:1;
+    margin:10px;
+    max-height: calc(100vh - 525px)
+}
+#chart > div{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#chart > div:first-child{
+    border-bottom: 1px solid var(--Grey-Line, #696969);
+    min-height: 20px;
+    padding:12px 10px;
+}
+#chart > div:first-child > div{
+    display: flex;
+    align-items: center;
+    gap:10px;
+}
+#chart > div:first-child h1{
+    color: var(--Black, #2F2F2F);
+    font-family: Spoqa Han Sans Neo;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 20px; /* 125% */
+}
+#chart > div:first-child small{
+    color: var(--Grey-Text, #696969);
+    text-align: center;
+    font-family: Helvetica Neue;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 20px; /* 166.667% */
+}
+#chart > div:first-child span{
+    font-family: Spoqa Han Sans Neo;
+    font-size: 15px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 20px; /* 133.333% */
+}
+#chart > div:first-child b{
+    color: var(--Black, #2F2F2F);
+    text-align: right;
+    font-family: Spoqa Han Sans Neo;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 20px; /* 125% */
+}
+#chart > div:last-child{
+
+    padding:0 10px 12px;
+}
+
+#chart > div:last-child button{
+    background: var(--Grey-Background, #F2F2F2);
+    color: var(--Black, #2F2F2F);
+}
+
+
+
+#chart > div:last-child button.active{
+    background: var(--Black, #2F2F2F);
+    color: var(--Wtite, #FFF);
+}
+
+#chart > div:last-child > div:first-child button{
+    border:none;
+    padding: 5px 12px;
+    border-radius: 2px;
+    text-align: center;
+    font-family: Noto Sans KR;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 18px; /* 150% */
+}
+
+
+
+#file {
+    width: 150px;  /* 바의 가로 크기를 200px로 설정 */
+    height: 20px;  /* 바의 세로 크기를 20px로 설정 */
+}
+
+
+
+#chart > div:last-child > div:last-child button{
+    border:none;
+    padding: 4px 30px;
+    border-radius: 2px;
+    text-align: center;
+    font-family: Noto Sans KR;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 24px; /* 171.429% */
+}
+.title-between{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--Black, #2F2F2F);
+    text-align: right;
+    font-family: Noto Sans KR;
+    font-size: 13px;
+    font-style: normal;
+    font-weight: 700;
+    line-height: 18px; /* 138.462% */
+}
+/* The switch - the box around the slider */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 20px;
+}
+
+/* Hide default HTML checkbox */
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* The slider */
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--Black);
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+
+input:checked + .slider:before {
+    -webkit-transform: translateX(12px);
+    -ms-transform: translateX(12px);
+    transform: translateX(12px);
+}
+
+
+
+/* Rounded sliders */
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+
+
+
+
+
+
+/* 사운드 sliders 정의 */
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+}
