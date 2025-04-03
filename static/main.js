@@ -39,6 +39,33 @@ const renderChart = (info)=>{
     chart.update()
 }
 
+
+
+
+
+
+const toggle = (e)=>{
+    const isChecked = e.target.checked; // 체크박스의 상태를 가져옴
+    const messageDiv = document.getElementById("message");
+
+    const overseaTable = document.getElementById("oversea_list");
+    const domesticTable = document.getElementById("list");
+
+    if (isChecked) {
+        toggle_korea_Stock()
+        overseaTable.style.display = "none"; // 해외 종목 테이블 숨김
+        domesticTable.style.display = "table"; // 국내 종목 테이블 표시
+        overseaOptions.style.display = "block"; // 해외 거래소 드롭다운 표시
+        messageDiv.textContent = "국내 종목이 선택되었습니다.";
+    } else {
+        toggle_oversea_Stock()
+        overseaTable.style.display = "table"; // 해외 종목 테이블 표시
+        domesticTable.style.display = "none"; // 국내 종목 테이블 숨김
+        overseaOptions.style.display = "none"; // 해외 거래소 드롭다운 숨김
+        messageDiv.textContent = "해외 종목이 선택되었습니다.";
+    }
+}
+
 const getJson=(url,option={})=>{
     return fetch(url,option).then(res=>res.json())
 }
@@ -68,24 +95,6 @@ const toggleFull = ()=>{
     }
 }
 
-const renderInfo = (label,desc,price,change)=>{
-    let header = document.getElementById("chart").getElementsByTagName("div")[0]
-    let h1 = header.getElementsByTagName("h1")[0]
-    h1.innerText=label
-    let small = header.getElementsByTagName("small")[0]
-    small.innerText=desc
-    let b = header.getElementsByTagName("b")[0]
-    b.innerText=price.toLocaleString()+"원"
-    let span = header.getElementsByTagName("span")[0]
-    let style = "";
-    if(change>0){
-        style+="color:#FF5755;"
-    }else if(change<0){
-        style+="color:#0A6CFF;"
-    }
-    span.setAttribute("style",style)
-    span.innerText=(change>0?"+":"")+Math.round(change*10000)/100+"%"
-}
 
 const renderOrder = info=>{
 
@@ -112,28 +121,6 @@ const renderOrder = info=>{
     })
 }
 
-
-const toggle = (e)=>{
-    const isChecked = e.target.checked; // 체크박스의 상태를 가져옴
-    const messageDiv = document.getElementById("message");
-
-    const overseaTable = document.getElementById("oversea_list");
-    const domesticTable = document.getElementById("list");
-
-    if (isChecked) {
-        toggle_korea_Stock()
-        overseaTable.style.display = "none"; // 해외 종목 테이블 숨김
-        domesticTable.style.display = "table"; // 국내 종목 테이블 표시
-        overseaOptions.style.display = "block"; // 해외 거래소 드롭다운 표시
-        messageDiv.textContent = "국내 종목이 선택되었습니다.";
-    } else {
-        toggle_oversea_Stock()
-        overseaTable.style.display = "table"; // 해외 종목 테이블 표시
-        domesticTable.style.display = "none"; // 국내 종목 테이블 숨김
-        overseaOptions.style.display = "none"; // 해외 거래소 드롭다운 숨김
-        messageDiv.textContent = "해외 종목이 선택되었습니다.";
-    }
-}
 
 const toggle_oversea_exchange = () => {
     const exchangeSelect = document.getElementById("exchange");
@@ -187,20 +174,22 @@ const load_korea_Unit = (unit) => {
 }
 
 
-const load_oversea_Unit = (unit) => {
-    let id = document.getElementById("identify").value; //stock_oversea.ks에서 document에 넣었던 identify값을 가져온다
-    let exchange_code = document.getElementById("exchange").value;
-    let messageDiv = document.getElementById("messageDiv"); // 메시지 표시할 요소 선택
-    {
-        load_oversea_StockCandle(id, unit, exchange_code); // 해외 주식 로드
-        messageDiv.textContent = "해외 주식이 로드되었습니다.";
-    }
 
-    let units = document.getElementsByClassName("units");
-    for (let i = 0; i < units.length; i++) {
-        units[i].classList.remove("active");
-        if ((unit === "day" && i === 0) || (unit === "week" && i === 1) || (unit === "month" && i === 2)) {
-            units[i].classList.add("active");
-        }
+const renderInfo = (label,desc,price,change)=>{
+    let header = document.getElementById("chart").getElementsByTagName("div")[0]
+    let h1 = header.getElementsByTagName("h1")[0]
+    h1.innerText=label
+    let small = header.getElementsByTagName("small")[0]
+    small.innerText=desc
+    let b = header.getElementsByTagName("b")[0]
+    b.innerText=price.toLocaleString()+"원"
+    let span = header.getElementsByTagName("span")[0]
+    let style = "";
+    if(change>0){
+        style+="color:#FF5755;"
+    }else if(change<0){
+        style+="color:#0A6CFF;"
     }
+    span.setAttribute("style",style)
+    span.innerText=(change>0?"+":"")+Math.round(change*10000)/100+"%"
 }

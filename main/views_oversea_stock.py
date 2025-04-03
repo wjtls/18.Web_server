@@ -1,7 +1,6 @@
 
 from django.http import HttpResponse
 from django.http import JsonResponse
-import main.secret_data.run_token as token
 import datetime
 
 import sys
@@ -29,7 +28,7 @@ def oversea_api(request, minute, symbol, exchange_code):
     now = datetime.datetime.now()
     now = now.strftime("%Y-%m-%d %H:%M")
     data_count = ["2010-01-01 00:00", now]
-    ACCESS_TOKEN = token.get_access_token()
+    ACCESS_TOKEN , token_time= get_ovsstk_chart_price.get_access_token()
     print(ACCESS_TOKEN, 'access token')
 
     # 실시간 데이터 호출
@@ -52,7 +51,7 @@ def oversea_api(request, minute, symbol, exchange_code):
     if files:
         past_data_name = files[0]  # 첫 번째로 찾은 파일 사용
         past_data = pd.read_csv(past_data_name)
-        past_data.columns = ['datetime', 'open', 'high', 'low', 'close', 'evol']
+        past_data.columns = ['datetime', 'open', 'high', 'low', 'last', 'evol']
         print(f"FRD 데이터 파일 서치완료: {past_data_name}")
     else:
         print(f"저장된 FRD 데이터 전체에서 파일을 찾을 수 없습니다.   찾은 파일 : {past_data_name}")
@@ -65,9 +64,6 @@ def oversea_api(request, minute, symbol, exchange_code):
     real_time_data['datetime'] = pd.to_datetime(real_time_data['datetime'])
 
     # 분봉 변환
-    if minute == 'day':
-        minute = 3600
-    print(real_time_data, '실시간 데이터', minute, '설정 분봉', symbol, '심볼')
 
     # datetime 열을 인덱스로 설정
     past_data.set_index('datetime', inplace=True)
@@ -77,11 +73,13 @@ def oversea_api(request, minute, symbol, exchange_code):
     past_data = past_data.between_time('09:00', '16:00')
     real_time_data = real_time_data.between_time('09:00', '16:00')
 
+    print(past_data,'이전 데이터', minute, '설정 분봉', symbol, '심볼')
+    print(real_time_data, '실시간 데이터', minute, '설정 분봉', symbol, '심볼')
     # 합침
     combined_data = pd.concat([past_data, real_time_data], axis=0)
     combined_data.reset_index(inplace=True)
     combined_data = combined_data.drop_duplicates(subset='datetime')
-    combined_data.columns = ['Datetime', 'open', 'high', 'low', 'close', 'volume', 'last', 'eamt']
+    combined_data.columns = ['Datetime', 'open', 'high', 'low', 'last','volume', 'eamt']
 
     # datetime 형식으로 변환
     start_date = pd.to_datetime(data_count[0])
@@ -91,18 +89,16 @@ def oversea_api(request, minute, symbol, exchange_code):
     filtered_data = combined_data[
         (combined_data['Datetime'] >= start_date) & (combined_data['Datetime'] <= end_date)]
 
-    df = filtered_data[['Datetime', 'open', 'high', 'low', 'close', 'volume']]
+    df = filtered_data[['Datetime', 'open', 'high', 'low', 'last', 'volume']]
     data_set = pd.DataFrame(df).reset_index()
-    data_set = total_time_Frame(data_set.values.tolist(), minute, data_set.columns)
-
-    print(data_set, '데이터')
+    #data_set = total_time_Frame(data_set.values.tolist(), minute, data_set.columns)
 
     # 각 열을 Series로 변환 및 NaN 처리
-    open_ = pd.to_numeric(data_set['open'], errors='coerce').fillna(0).astype(int).tolist()
-    close_ = pd.to_numeric(data_set['close'], errors='coerce').fillna(0).astype(int).tolist()
-    high_ = pd.to_numeric(data_set['high'], errors='coerce').fillna(0).astype(int).tolist()
-    low_ = pd.to_numeric(data_set['low'], errors='coerce').fillna(0).astype(int).tolist()
-    vol = pd.to_numeric(data_set['volume'], errors='coerce').fillna(0).astype(int).tolist()
+    open_ = pd.to_numeric(data_set['open'], errors='coerce').fillna(0).astype(float).tolist()
+    close_ = pd.to_numeric(data_set['last'], errors='coerce').fillna(0).astype(float).tolist()
+    high_ = pd.to_numeric(data_set['high'], errors='coerce').fillna(0).astype(float).tolist()
+    low_ = pd.to_numeric(data_set['low'], errors='coerce').fillna(0).astype(float).tolist()
+    vol = pd.to_numeric(data_set['volume'], errors='coerce').fillna(0).astype(float).tolist()
     date = pd.to_datetime(data_set['Datetime'])  # Datetime 형식으로 변환
 
     # 데이터프레임을 사용하여 데이터 생성
@@ -119,12 +115,13 @@ def oversea_api(request, minute, symbol, exchange_code):
     for i in range(len(data['x'])):
         data_list.append({
             'localDate': pd.to_datetime(data['x'].iloc[i]),  # ISO 형식으로 변환
-            'openPrice': int(data['o'][i]),  # int로 변환
-            'highPrice': int(data['h'][i]),  # int로 변환
-            'lowPrice': int(data['l'][i]),  # int로 변환
-            'closePrice': int(data['c'][i])  # int로 변환
+            'openPrice': float(data['o'][i]),
+            'highPrice': float(data['h'][i]),
+            'lowPrice': float(data['l'][i]),  #
+            'closePrice': float(data['c'][i])  #
         })
-
+    data_list =data_list[-10000:]
+    print('데이터 개수 :',len(data_list))
     return JsonResponse({'status': True, 'response': {'data': data_list}}, status=200)
 
 

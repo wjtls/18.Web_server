@@ -19,8 +19,6 @@ from datetime import datetime
 
 
 def AI_finance_RAG(request):
-
-
     chat_history = []
     try:
         json_file_path = "b_finance_RAG_AI/traj/report_chat_history.json"
