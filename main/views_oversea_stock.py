@@ -30,7 +30,7 @@ def oversea_api(request, minute, symbol, exchange_code):
     data_count = ["2010-01-01 00:00", now]
     ACCESS_TOKEN , token_time= get_ovsstk_chart_price.get_access_token()
     print(ACCESS_TOKEN, 'access token')
-
+    print(exchange_code,symbol,'info')
     # 실시간 데이터 호출
     real_time_data = get_ovsstk_chart_price.fetch_and_save_data(exchange_code, symbol, 1, 40, ACCESS_TOKEN) #거래소코드,심볼
 

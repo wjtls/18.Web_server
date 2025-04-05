@@ -67,7 +67,7 @@ const load_oversea_Stock = (id,exchange_code)=>{
     // exchange_code 값 설정
     exchangeInput.value = exchange_code;
 
-    load_oversea_Unit("day",exchange_code)
+    load_oversea_Unit("5m")
 }
 
 const processGroup = (group, previousClosePrice, isFirstGroup) => {
@@ -90,24 +90,16 @@ const processGroup = (group, previousClosePrice, isFirstGroup) => {
     };
 };
 
-const loadUnit = (unit)=>{
-    let id = document.getElementById("identify").value
-    const isStock = id.indexOf("-")===-1
-    if(isStock){
-        load_oversea_StockCandle(id,unit)
-    }else{
-        loadStockCandle(id,unit)
-    }
-    let units = document.getElementsByClassName("units")
-    for(let i = 0;i<units.length;i++){
-        units[i].classList.remove("active")
-        if((unit==="day" && i===0)|| (unit==="week" && i===1) || (unit==="month" && i===2)){
-            units[i].classList.add("active")
-        }
-    }
-}
-const load_oversea_StockCandle = (id, unit, exchange_code,interval) => {
+
+const load_oversea_StockCandle = (id, unit, exchange_code) => {
     const intervals = { '1m': 1, '3m': 3, '5m': 5, '10m': 10, '60m': 60, '1d': 1440 }; // 간격 정의
+    const interval = unit;
+    const slider = document.getElementById('simulatorSlider') ;
+    const slidervalue = slider.value
+    console.log(interval,slidervalue ,'fksnfklasfklklansfaklfklnsaf');
+
+    // 표시할 캔들 개수 (최신 n개)를 설정합니다.
+    const numberOfCandlesToShow = slidervalue; // 원하는 개수로 변경하세요.
 
     getJson2("/oversea_api/" + unit + "/" + id + "/" + exchange_code).then(json => {
         let rawData = json.response.data.sort((a, b) => new Date(a.localDate) - new Date(b.localDate)); // 데이터 정렬
@@ -150,15 +142,18 @@ const load_oversea_StockCandle = (id, unit, exchange_code,interval) => {
             const processedGroup = processGroup(group, previousClosePrice, isFirstGroup);
             previousClosePrice = processedGroup.c; // 다음 그룹을 위해 종가 저장
 
-            console.log(`그룹 ${index + 1}:`, group); // 각 그룹의 원본 데이터 출력
-            console.log(`처리된 결과 ${index + 1}:`, processedGroup); // 각 그룹의 처리 결과 출력
-
             return processedGroup;
         });
 
-        renderChart(result); // 차트 렌더링 함수 호출
+        // 최신 n개의 캔들만 선택합니다.
+        const startIndex = Math.max(0, result.length - numberOfCandlesToShow);
+        const latestResult = result.slice(startIndex);
+
+        renderChart(latestResult); // 차트 렌더링 함수 호출
     });
 };
+
+
 
 const load_oversea_StockCandle2 = (id, unit, exchange_code) => {
     getJson2("/oversea_api/" + unit + "/" + id + "/" + exchange_code).then(json => {
@@ -216,6 +211,7 @@ const getJson2=(url,option={})=>{
 }
 
 
+//초기 차트 뷰
 const load_oversea_Unit = (unit) => {
     let id = document.getElementById("identify").value; //stock_oversea.ks에서 document에 넣었던 identify값을 가져온다
     let exchange_code = document.getElementById("exchange").value;
@@ -230,6 +226,26 @@ const load_oversea_Unit = (unit) => {
         units[i].classList.remove("active");
         if ((unit === "day" && i === 0) || (unit === "week" && i === 1) || (unit === "month" && i === 2)) {
             units[i].classList.add("active");
+        }
+    }
+}
+
+
+//인터벌 설정시 차트뷰
+const loadUnit = (unit)=>{
+    let id = document.getElementById("identify").value
+    let exchange_code = document.getElementById("exchange").value;
+    const isStock = id.indexOf("-")===-1
+    if(isStock){
+        load_oversea_StockCandle(id,unit,exchange_code)
+    }else{
+        loadStockCandle(id,unit,exchange_code)
+    }
+    let units = document.getElementsByClassName("units")
+    for(let i = 0;i<units.length;i++){
+        units[i].classList.remove("active")
+        if((unit==="day" && i===0)|| (unit==="week" && i===1) || (unit==="month" && i===2)){
+            units[i].classList.add("active")
         }
     }
 }
