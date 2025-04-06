@@ -1,4 +1,5 @@
-![image](https://github.com/user-attachments/assets/f2e67ae7-09b9-4199-bd15-cf8c44b195d9)
+![image](https://github.com/user-attachments/assets/f456ddf0-0f3c-40a4-bd37-9fccb118a4c4)
+
 
 
 용도 1: 해당 웹페이지는 주변인에게 배포하여 투자의사결정에 도움을 주고있음.<br>
