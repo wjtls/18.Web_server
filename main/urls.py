@@ -6,7 +6,8 @@ from . import views_korea_stock
 from . import views_main
 from . import views_oversea_stock
 from . import views_AI
-
+# Django 내장 LoginView와 LogoutView 임포트
+from django.contrib.auth import views as auth_views
 '''
 예시
 path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에서
@@ -20,12 +21,16 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 
 urlpatterns = [
     #웹 요소들
+    path('register/', views_main.register_view, name='register'),
+    path('login/',auth_views.LoginView.as_view(template_name='main/login.html'),name='login'),
+    path('favicon.ico', RedirectView.as_view(url='/static/favicon.ico')),
     path("api/<str:unit>/<str:id>", views_korea_stock.korea_api, name="korea_stock_api"),
     path("ask/<str:id>", views_korea_stock.korea_stock_price, name="korea_stock_ask"),
     path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list"),
     path("basic/<str:id>", views_korea_stock.korea_stock_basic, name="korea_stock_basic"),
 
     #데이터
+    path("oversea_news/", views_oversea_stock.oversea_news, name="oversea_stock_ask"),
     path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_oversea_stock.oversea_api, name="oversea_stock_ask"),
     path("oversea_ask/<str:id>/", views_oversea_stock.oversea_stock_price,name="oversea_stock_price"),
     path("oversea_list/", views_oversea_stock.oversea_stock_list, name="oversea_stock_list"),
