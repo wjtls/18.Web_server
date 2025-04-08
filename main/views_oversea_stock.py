@@ -6,9 +6,12 @@ import datetime
 import sys
 import os
 
+'''
 # 현재 파일의 경로를 기준으로 이전 경로를 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append('../')
 from a_korea_invest_api_env import get_ovsstk_chart_price
+'''
 
 # 시각화및 저장,계산
 import pandas as pd
