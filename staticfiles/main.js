@@ -193,3 +193,17 @@ const renderInfo = (label,desc,price,change)=>{
     span.setAttribute("style",style)
     span.innerText=(change>0?"+":"")+Math.round(change*10000)/100+"%"
 }
+
+// === 필요한 유틸리티 함수 (외부 JS에 없을 경우) ===
+function updateSliderValue(value) {
+    const sliderValueElement = document.getElementById('sliderValue');
+    if(sliderValueElement) sliderValueElement.textContent = value;
+}
+function updateQuantityValue(value) {
+    const quantityValueElement = document.getElementById('quantity_value');
+    if(quantityValueElement) quantityValueElement.textContent = value;
+}
+function getSliderValue() {
+     const slider = document.getElementById('simulatorSlider');
+     return slider ? slider.value : '100'; // 기본값 반환
+}

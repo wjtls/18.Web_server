@@ -66,7 +66,7 @@ const load_oversea_Stock = (id, exchange_code) => {
     exchangeInput.id = "select_exchange_code"; //이걸로 getElementById로 읽고, 같은값이 있으면 HTML에서 읽어들이는거임
     // exchange_code 값 설정
     exchangeInput.value = exchange_code;
-    load_oversea_Unit("5m")
+    load_oversea_Unit('5m')
 }
 
 const processGroup = (group, previousClosePrice, isFirstGroup) => {
@@ -246,3 +246,4 @@ const loadUnit = (unit) => {
         }
     }
 }
+
