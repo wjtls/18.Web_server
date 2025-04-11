@@ -207,3 +207,35 @@ function getSliderValue() {
      const slider = document.getElementById('simulatorSlider');
      return slider ? slider.value : '100'; // 기본값 반환
 }
+
+
+function updateSliderValue(value) {
+            const element = document.getElementById('sliderValue');
+            if (element) element.textContent = value;
+            // Potentially trigger chart load here if needed: loadUnit(currentUnit, value);
+        }
+function updateQuantityValue(value) {
+    const element = document.getElementById('quantity_value');
+    if (element) element.textContent = value;
+}
+// Submit function (As provided)
+const submit = ()=>{
+    let info = document.getElementById("message").value;
+     if (!info.trim()) { alert("분석 요청 내용을 입력해주세요."); return; }
+    let token = document.querySelector('[name=csrfmiddlewaretoken]')?.value; // CSRF 토큰 가져오기
+    let form = new FormData();
+    form.append("message", info);
+    if (token) form.append("csrfmiddlewaretoken", token);
+
+    console.log("Submitting AI request:", info);
+    // 실제 fetch 로직은 외부 파일이나 다른 곳에 구현되어 있다고 가정
+    fetch("/main",{ // 사용자의 기존 엔드포인트 유지
+        method:"post",
+        body:form
+    })
+    .then(response => { /* 응답 처리 */ console.log("AI Response received")})
+    .catch(error => { console.error("Submit error:", error); });
+
+    // alert(`AI 분석 요청 접수됨 (내용: ${info})`); // Using console log instead of alert
+     document.getElementById("message").value = "";
+};

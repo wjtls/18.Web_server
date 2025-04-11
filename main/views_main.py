@@ -78,5 +78,5 @@ def register_view(request): #회원가입시 처리
         # 모달 방식에서는 POST만 처리하는 경우가 많지만,
         # 만약 register/ URL로 직접 접근했을 때의 처리를 원한다면 여기에 로직 추가
         # 예: return render(request, 'main/register_page.html')
-        # 여기서는 GET 요청 시 홈페이지로 돌려보내는 것으로 처리합니다.
+        # 여기서는 GET 요청 시 홈페이지로 돌려보내는 것으로 처리
         return redirect('/')

@@ -93,12 +93,11 @@ const processGroup = (group, previousClosePrice, isFirstGroup) => {
 const load_oversea_StockCandle = (id, unit, exchange_code) => {
     const intervals = {'1m': 1, '3m': 3, '5m': 5,'7m':7, '10m': 10, '11m': 11, '15m': 15, '60m': 60,  '360m': 360,'1d': 1440}; // 간격 정의
     const interval = unit;
-    const slider = document.getElementById('simulatorSlider');
-    const slidervalue = slider.value
+    const slidervalue = document.getElementById('simulatorSlider');
 
-    // 표시할 캔들 개수 (최신 n개)를 설정합니다.
-    const numberOfCandlesToShow = slidervalue; // 원하는 개수로 변경하세요.
-
+    // 표시할 캔들 개수 (최신 n개)를 설정
+    const numberOfCandlesToShow = slidervalue.value; // 원하는 개수로 변경
+    console.log(numberOfCandlesToShow,'fnsafkalnfksanfklasflaskf')
     getJson2("/oversea_api/" + unit + "/" + id + "/" + exchange_code).then(json => {
         let rawData = json.response.data.sort((a, b) => new Date(a.localDate) - new Date(b.localDate)); // 데이터 정렬
         const groupByInterval = (data, intervalMinutes) => {
@@ -143,7 +142,7 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
             return processedGroup;
         });
 
-        // 최신 n개의 캔들만 선택합니다.
+        // 최신 n개의 캔들만 선택
         const startIndex = Math.max(0, result.length - numberOfCandlesToShow);
         const latestResult = result.slice(startIndex);
 
@@ -152,36 +151,6 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
 };
 
 
-const load_oversea_StockCandle2 = (id, unit, exchange_code) => {
-    getJson2("/oversea_api/" + unit + "/" + id + "/" + exchange_code).then(json => {
-        let result = json.response.data
-            .sort((a, b) => new Date(a.localDate) - new Date(b.localDate))
-            .map((item, index, array) => {
-                let date = luxon.DateTime.fromISO(item.localDate);
-                let openPrice = item.openPrice; // 기존 openPrice 유지
-
-                // 첫 번째 캔들이 아니고, 이전 캔들의 closePrice가 존재하면 이전 closePrice로 설정
-                if (index > 0 && index < array.length - 1 && array[index - 1].closePrice !== undefined) {
-                    console.log('결과 0:', index, array[index - 1].closePrice);
-                    openPrice = array[index - 1].closePrice;
-                }
-                if (index == array.length - 1) {
-                    item.closePrice = item.openPrice
-                } //실시간 가격 업데이트 필요
-
-                console.log("결과:", date.valueOf(), openPrice, item.closePrice);
-                let data = {
-                    x: date.valueOf(),
-                    o: openPrice,
-                    h: item.highPrice,
-                    l: item.lowPrice,
-                    c: item.closePrice
-                };
-                return data;
-            });
-        renderChart(result);
-    });
-}
 
 
 const load_oversea_StockOrder = id => {
