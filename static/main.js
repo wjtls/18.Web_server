@@ -20,6 +20,9 @@ var chart = new Chart(ctx, {
         maintainAspectRatio: false,
     }
 });
+
+
+
 const renderChart = (info)=>{
     const ma = getMA(info,5)
     chart.config.data.datasets = [
@@ -28,7 +31,7 @@ const renderChart = (info)=>{
             color:{
                 up:"#FF5755",
                 down:"#0A6CFF",
-                upchanged:"#999"
+                upchanged:"#35cd55"
             }
         },
         {
@@ -38,10 +41,6 @@ const renderChart = (info)=>{
     ]
     chart.update()
 }
-
-
-
-
 
 
 const toggle = (e)=>{

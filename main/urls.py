@@ -21,6 +21,7 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 
 urlpatterns = [
     #웹 요소들
+    path('dashboard/', auth_views.LoginView.as_view(template_name='main/dashboard.html'), name='dashboard'),
     path('register/', views_main.register_view, name='register'),
     path('login/',auth_views.LoginView.as_view(template_name='main/login.html'),name='login'),
     path('favicon.ico', RedirectView.as_view(url='/static/favicon.ico')),

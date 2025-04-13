@@ -62,6 +62,26 @@ const loadStockCandle=(id,unit='day')=>{
     })
 }
 
+const renderChart = (info)=>{
+    const ma = getMA(info,5)
+    chart.config.data.datasets = [
+        {
+            data: info,
+            color:{
+                up:"#FF5755",
+                down:"#0A6CFF",
+                upchanged:"#999"
+            }
+        },
+        {
+            data:ma,
+            type:"line"
+        }
+    ]
+    chart.update()
+}
+
+
 const loadStockOrder=id=>{
     getJson("/ask/"+id).then(json=>{
 

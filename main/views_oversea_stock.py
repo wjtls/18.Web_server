@@ -26,7 +26,7 @@ import json
 
 # Create your views here.
 
-def get_file_path(symbol):
+def get_file_path(symbol,minute):
     # 현재 실행 중인 파일의 절대 경로
     current_file_path = os.path.abspath(__file__)
 
@@ -34,7 +34,7 @@ def get_file_path(symbol):
     current_dir = os.path.dirname(current_file_path)
 
     # 목표 파일 상대 경로
-    relative_path = f'../../a_FRDdata_api/price_real_data/real_data_{symbol}_1m.json'
+    relative_path = f'../../a_FRDdata_api/price_real_data/real_data_{symbol}_{minute}.json'
 
     # 목표 파일 절대 경로 계산
     absolute_path = os.path.abspath(os.path.join(current_dir, relative_path))
@@ -56,8 +56,8 @@ def get_news_file_path():
 
     return absolute_path
 
-def oversea_api(request, minute, symbol, exchange_code):
-    path = get_file_path(symbol)
+def oversea_api(request, minute, symbol, exchange_code):   # 가격 데이터 호출
+    path = get_file_path(symbol, minute)
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     data_res = data.get('response')  # 로드된 데이터 출력

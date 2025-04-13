@@ -66,7 +66,7 @@ const load_oversea_Stock = (id, exchange_code) => {
     exchangeInput.id = "select_exchange_code"; //이걸로 getElementById로 읽고, 같은값이 있으면 HTML에서 읽어들이는거임
     // exchange_code 값 설정
     exchangeInput.value = exchange_code;
-    load_oversea_Unit('5m')
+    load_oversea_Unit("5m")
 }
 
 const processGroup = (group, previousClosePrice, isFirstGroup) => {
@@ -90,39 +90,98 @@ const processGroup = (group, previousClosePrice, isFirstGroup) => {
 };
 
 
-
 const load_oversea_StockCandle = (id, unit, exchange_code) => {
-    const interval = unit; // 캔들 간격
-    const slidervalue = document.getElementById('simulatorSlider'); // 슬라이더 요소 가져오기
+    const intervals = {'1m': 1, '3m': 3, '5m': 5,'7m':7, '10m': 10, '11m': 11, '15m': 15, '60m': 60,  '360m': 360,'1d': 1440}; // 간격 정의
+    const interval = unit;
+    const slider = document.getElementById('simulatorSlider');
+    const slidervalue = slider.value
 
-    // 표시할 캔들 개수 (최신 n개)를 설정
-    const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50; // 기본값: 최신 50개
-    console.log(numberOfCandlesToShow, '캔들 개수 설정 완료');
+    // 표시할 캔들 개수 (최신 n개)를 설정합니다.
+    const numberOfCandlesToShow = slidervalue; // 원하는 개수로 변경하세요.
 
-    // 데이터 요청
-    getJson2(`/oversea_api/${interval}/${id}/${exchange_code}`).then(json => {
-        let rawData = json.response.data.sort((a, b) => new Date(a.localDate) - new Date(b.localDate)); // 데이터 정렬 (오름차순)
+    getJson2("/oversea_api/" + unit + "/" + id + "/" + exchange_code).then(json => {
+        let rawData = json.response.data.sort((a, b) => new Date(a.localDate) - new Date(b.localDate)); // 데이터 정렬
+        const groupByInterval = (data, intervalMinutes) => {
+            let groupedData = [];
+            let group = [];
+            let currentStartTime = null;
 
-        // 최신 n개의 캔들만 선택
-        const startIndex = Math.max(0, rawData.length - numberOfCandlesToShow);
-        const latestResult = rawData.slice(startIndex);
+            data.forEach(item => {
+                let date = luxon.DateTime.fromISO(item.localDate);
+                if (!currentStartTime) {
+                    currentStartTime = date.startOf('minute');
+                }
 
-        // 데이터를 차트 형식으로 변환
-        const chartData = latestResult.map(item => ({
-            x: new Date(item.localDate).getTime(), // localDate를 타임스탬프로 변환
-            o: item.openPrice,                    // openPrice
-            h: item.highPrice,                   // highPrice
-            l: item.lowPrice,                    // lowPrice
-            c: item.closePrice                   // closePrice
-        }));
+                if (date.diff(currentStartTime, 'minutes').minutes < intervalMinutes) {
+                    group.push(item); // 현재 그룹에 추가
+                } else {
+                    if (group.length > 0) {
+                        groupedData.push(group); // 기존 그룹 저장
+                    }
+                    group = [item]; // 새로운 그룹 시작
+                    currentStartTime = date.startOf('minute'); // 새로운 그룹 시작 시간 설정
+                }
+            });
 
-        console.log(chartData, '차트 데이터 변환 완료');
-        renderChart(chartData); // 차트 렌더링 함수 호출
-    }).catch(error => {
-        console.error("데이터 요청 중 오류 발생:", error);
+            if (group.length > 0) {
+                groupedData.push(group); // 마지막 그룹 저장
+            }
+
+            return groupedData;
+        };
+
+        const intervalMinutes = intervals[interval]; // 간격을 분 단위로 변환
+        let groupedData = groupByInterval(rawData, intervalMinutes); // 데이터를 간격별로 그룹화
+
+        let previousClosePrice = null; // 이전 closePrice를 저장할 변수
+
+        let result = groupedData.map((group, index) => {
+            const isFirstGroup = index === 0; // 첫 번째 그룹 여부 확인
+            const processedGroup = processGroup(group, previousClosePrice, isFirstGroup);
+            previousClosePrice = processedGroup.c; // 다음 그룹을 위해 종가 저장
+
+            return processedGroup;
+        });
+
+        // 최신 n개의 캔들만 선택합니다.
+        const startIndex = Math.max(0, result.length - numberOfCandlesToShow);
+        const latestResult = result.slice(startIndex);
+
+        renderChart(latestResult); // 차트 렌더링 함수 호출
     });
 };
 
+
+const load_oversea_StockCandle2 = (id, unit, exchange_code) => {
+    getJson2("/oversea_api/" + unit + "/" + id + "/" + exchange_code).then(json => {
+        let result = json.response.data
+            .sort((a, b) => new Date(a.localDate) - new Date(b.localDate))
+            .map((item, index, array) => {
+                let date = luxon.DateTime.fromISO(item.localDate);
+                let openPrice = item.openPrice; // 기존 openPrice 유지
+
+                // 첫 번째 캔들이 아니고, 이전 캔들의 closePrice가 존재하면 이전 closePrice로 설정
+                if (index > 0 && index < array.length - 1 && array[index - 1].closePrice !== undefined) {
+                    console.log('결과 0:', index, array[index - 1].closePrice);
+                    openPrice = array[index - 1].closePrice;
+                }
+                if (index == array.length - 1) {
+                    item.closePrice = item.openPrice
+                } //실시간 가격 업데이트 필요
+
+                console.log("결과:", date.valueOf(), openPrice, item.closePrice);
+                let data = {
+                    x: date.valueOf(),
+                    o: openPrice,
+                    h: item.highPrice,
+                    l: item.lowPrice,
+                    c: item.closePrice
+                };
+                return data;
+            });
+        renderChart(result);
+    });
+}
 
 
 const load_oversea_StockOrder = id => {
@@ -186,18 +245,4 @@ const loadUnit = (unit) => {
             units[i].classList.add("active")
         }
     }
-}
-
-
-// 슬라이더 조작을 멈춘 후 일정 시간(예: 200~500ms)이 지나면 마지막 단 한 번만
-function handleSliderChangeDebounced(currentId,currentUnit,currentExchangeCode) {
-    clearTimeout(debounceTimer); // 이전 타이머 취소
-    debounceTimer = setTimeout(() => {
-        if (!currentId || !currentUnit || !currentExchangeCode) {
-            console.error("Debounce: Missing parameters.");
-            return;
-        }
-        console.log("Debounced call: Loading chart...");
-        load_oversea_StockCandle(currentId, currentUnit, currentExchangeCode);
-    }, 300); // 사용자가 입력을 멈춘 후 300ms 뒤에 실행
 }

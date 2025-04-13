@@ -17,6 +17,9 @@ import json
 from django.shortcuts import render
 from datetime import datetime
 
+
+
+
 def AI_finance_RAG(request):
     chat_history = []
     try:
