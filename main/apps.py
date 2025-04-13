@@ -76,6 +76,8 @@ def load_user(user_id):
 def index():
     # Main page showing login/register options if not logged in
     return render_template('index.html')
+# 숫자를 원화 형식 문자열로 변환하는 커스텀 필터
+
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -106,10 +108,10 @@ def register():
     new_user = User(username=username)
     new_user.set_password(password) # Hash the password
     # Set initial values (optional, can be done later)
-    new_user.cash = 1500000 # Example initial cash
-    new_user.portfolio_value = new_user.cash
-    new_user.level = 1
-    new_user.user_tier = "Bronze"
+    new_user.cash = 1000000  # ✅
+    new_user.portfolio_value = new_user.cash  # ✅ 현금과 동일하게 시작
+    new_user.level = 1  # ✅ 레벨 1
+    new_user.user_tier = "Bronze"  # ✅ 티어 Bronze
     # Generate a unique OTP secret for 2FA setup later
     new_user.otp_secret = pyotp.random_base32()
 

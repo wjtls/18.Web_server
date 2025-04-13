@@ -21,8 +21,11 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 
 urlpatterns = [
     #웹 요소들
+    path('base/', auth_views.LoginView.as_view(template_name='main/base'), name='base'),
+    path('setup_2fa/', auth_views.LoginView.as_view(template_name='main/setup_2fa'), name='setup_2fa'),
     path('dashboard/', auth_views.LoginView.as_view(template_name='main/dashboard.html'), name='dashboard'),
     path('register/', views_main.register_view, name='register'),
+    path('logout/', auth_views.LogoutView.as_view(template_name='main/logout.html'), name='logout'),
     path('login/',auth_views.LoginView.as_view(template_name='main/login.html'),name='login'),
     path('favicon.ico', RedirectView.as_view(url='/static/favicon.ico')),
     path("api/<str:unit>/<str:id>", views_korea_stock.korea_api, name="korea_stock_api"),
