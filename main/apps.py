@@ -81,6 +81,7 @@ def index():
 
 @app.route('/register', methods=['POST'])
 def register():
+    print(f"데이터베이스 경로: {DATABASE_PATH}")
     # Handle registration form submission from the modal
     username = request.form.get('username')
     password = request.form.get('password')

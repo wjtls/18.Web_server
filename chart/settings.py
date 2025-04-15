@@ -26,6 +26,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['49.142.52.133','127.0.0.1','wjtls01.com']
 
+AUTH_USER_MODEL = 'main.User'
 
 # Application definition
 
@@ -36,7 +37,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'main'
+    'chart',
+    'main',
+    'channels',  # channels 추가
+    'chat',      # chat 앱 추가 (consumers.py 등을 위치시킬 앱)
 ]
 
 MIDDLEWARE = [
@@ -131,3 +135,27 @@ STATICFILES_DIRS = [
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+#채팅부분
+
+# ASGI 설정을 가리키도록 이 설정을 추가.
+ASGI_APPLICATION = 'your_project_name.asgi.application' # 'your_project_name'을 실제 프로젝트 이름으로 변경
+
+# 채널 레이어 설정
+# 운영 환경에서는 안정성과 확장을 위해 Redis 사용을 권장.
+# 개발 환경에서는 간단하게 InMemory 사용 가능
+CHANNEL_LAYERS = {
+    "default": {
+        # 옵션 1: Redis 사용 (운영 환경 권장)
+        # Redis 서버가 실행 중이어야함.
+        # "BACKEND": "channels_redis.core.RedisChannelLayer",
+        # "CONFIG": {
+        #     "hosts": [("127.0.0.1", 6379)], # 필요시 호스트/포트 조정
+        # },
+
+        # 옵션 2: In-Memory 사용 (개발 환경에 적합, 운영 환경 부적합)
+         "BACKEND": "channels.layers.InMemoryChannelLayer"
+    },
+}
