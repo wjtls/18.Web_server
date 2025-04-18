@@ -21,6 +21,7 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 
 urlpatterns = [
     #웹 요소들
+    path('accounts/profile/', views_main.profile, name='profile'),
     path('base/', auth_views.LoginView.as_view(template_name='main/base'), name='base'),
     path('setup_2fa/', auth_views.LoginView.as_view(template_name='main/setup_2fa'), name='setup_2fa'),
     path('dashboard/', auth_views.LoginView.as_view(template_name='main/dashboard.html'), name='dashboard'),

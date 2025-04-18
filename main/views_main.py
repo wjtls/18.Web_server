@@ -85,3 +85,12 @@ def register_view(request):
     # 보통 회원가입 폼을 보여주는 GET 요청 처리가 필요하지만,
     # 모달 형태라면 그냥 메인 페이지로 보내는 것이 자연스러울 수 있습니다.
     return redirect('index')
+
+
+from django.shortcuts import render,redirect
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def profile(request):
+    # 이 뷰 함수는 로그인된 사용자만 접근할 수 있도록
+    return redirect('index')

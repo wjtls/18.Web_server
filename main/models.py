@@ -25,6 +25,7 @@ class User(AbstractUser):
     portfolio_value = models.FloatField(default=1000000.0)
     level = models.IntegerField(default=1)
     user_tier = models.CharField(max_length=50, default="Bronze")
+    real_cash = models.FloatField(default=0)
     # otp_secret = models.CharField(max_length=16, unique=True, null=True, blank=True) # 2FA 사용 시
     # is_2fa_enabled = models.BooleanField(default=False) # 2FA 사용 시
 

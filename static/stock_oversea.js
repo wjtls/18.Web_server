@@ -94,10 +94,10 @@ const processGroup = (group, previousClosePrice, isFirstGroup) => {
 const load_oversea_StockCandle = (id, unit, exchange_code) => {
     const interval = unit; // 캔들 간격
     const slidervalue = document.getElementById('simulatorSlider'); // 슬라이더 요소 가져오기
-
+    // id : 종목
     // 표시할 캔들 개수 (최신 n개)를 설정
     const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50; // 기본값: 최신 50개
-    console.log(numberOfCandlesToShow, '캔들 개수 설정 완료');
+    console.log(numberOfCandlesToShow,id,unit,exchange_code, '캔들 개수 설정 완료');
 
     // 데이터 요청
     getJson2(`/oversea_api/${interval}/${id}/${exchange_code}`).then(json => {

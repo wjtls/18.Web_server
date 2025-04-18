@@ -2,7 +2,7 @@
 
 
 // --- Helper Functions ---
-function formatCurrency(value, currency = '₩') {
+function formatCurrency(value, currency = '$') {
     // Basic formatting, consider locale-specific for production
     return `${currency}${Math.round(value).toLocaleString('ko-KR')}`;
 }
@@ -39,10 +39,6 @@ function updateChartPeriodically() {
     // 제공된 interval과 sliderValue를 사용한다고 가정
     console.log(`[${getCurrentTimestamp()}] 차트 자동 업데이트: 간격=${currentInterval}, 범위=${sliderValue}`);
     if (typeof loadUnit === 'function') {
-         // loadUnit 함수가 심볼을 명시적으로 요구하는지 확인하세요.
-         // 만약 loadUnit(symbol, unit, range) 형식이라면 심볼을 전달
-         // loadUnit(currentSymbol, currentInterval, sliderValue);
-         // 만약 loadUnit(unit, range) 형식이고 내부적으로 심볼을 가져온다면 아래로 사용
          loadUnit(currentInterval, sliderValue);
     } else {
         console.error("주기적 업데이트를 위한 loadUnit 함수를 찾을 수 없습니다!");

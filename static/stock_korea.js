@@ -1,5 +1,3 @@
-
-
 const toggle_korea_Stock = ()=>{
     getJson("/list").then(json=>{
         let list = document.getElementById("list")
