@@ -21,6 +21,8 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 
 urlpatterns = [
     #웹 요소들
+    path('index2/', views_main.web_socket_API, name='web_socket_API'),#웹소켓 api호출, index2 요청이 오면바로 실행
+    path('api/update_portfolio/', views_main.update_portfolio_api, name='update_portfolio_api'), #포폴 DB에 업데이트
     path('accounts/profile/', views_main.profile, name='profile'),
     path('base/', auth_views.LoginView.as_view(template_name='main/base'), name='base'),
     path('setup_2fa/', auth_views.LoginView.as_view(template_name='main/setup_2fa'), name='setup_2fa'),

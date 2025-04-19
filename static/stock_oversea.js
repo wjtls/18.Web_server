@@ -89,9 +89,68 @@ const processGroup = (group, previousClosePrice, isFirstGroup) => {
     };
 };
 
-
-
 const load_oversea_StockCandle = (id, unit, exchange_code) => {
+    console.log(`웹소켓 실시간 폴링 요청: ${id} (${exchange_code})`);
+
+    // --- 종목 변경 시 웹소켓 구독/해제 처리 ---
+    if (currentSymbol && currentExchange && (currentSymbol !== id || currentExchange !== exchange_code)) {
+        // 이전 종목 구독 해제
+        unsubscribeRealtimePrice(currentSymbol, currentExchange);
+    }
+    // 현재 정보 업데이트
+    currentSymbol = id;
+    currentExchange = exchange_code;
+    // ------------------------------------
+
+    const interval = unit;
+    const slidervalue = document.getElementById('simulatorSlider');
+    const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50;
+
+    getJson2(`/oversea_api/${interval}/${id}/${exchange_code}`).then(json => {
+         // --- ★★★ 수정/복원 필요한 부분 시작 ★★★ ---
+
+         // 1. API 응답에서 데이터 추출 및 기본 검사
+         let rawData = json.response?.data; // API 응답 구조에 맞게 조정 필요
+         if (!Array.isArray(rawData)) {
+             console.error("API 응답 데이터(rawData)가 배열이 아닙니다.", json);
+             rawData = []; // 빈 배열로 초기화하여 이후 코드 에러 방지
+         } else {
+             // 2. 데이터 정렬 (localDate 기준 오름차순)
+             rawData.sort((a, b) => new Date(a.localDate) - new Date(b.localDate));
+         }
+
+         // 3. 표시할 캔들 개수(numberOfCandlesToShow)에 맞춰 최신 데이터 추출
+         const startIndex = Math.max(0, rawData.length - numberOfCandlesToShow);
+         // ★★★ 여기가 누락된 핵심 로직 ★★★
+         const latestResult = rawData.slice(startIndex);
+         // ★★★ 여기가 누락된 핵심 로직 ★★★
+
+         // --- ★★★ 수정/복원 필요한 부분 끝 ★★★ ---
+
+         // 4. 차트 데이터 형식으로 변환 (이제 latestResult 사용 가능)
+         const chartData = latestResult.map(item => ({
+             x: new Date(item.localDate).getTime(),
+             o: item.openPrice,
+             h: item.highPrice,
+             l: item.lowPrice,
+             c: item.closePrice
+         }));
+
+         currentChartData = chartData; // 전역 변수 업데이트
+
+         // 차트 렌더링
+         renderChart(currentChartData);
+
+         //웹소켓 실시간 가격
+         subscribeRealtimePrice(currentSymbol, currentExchange);
+
+
+    }).catch(error => {
+         console.error(`/${id}/${interval}/ 데이터 요청 중 오류:`, error); // 에러 로깅
+    });
+};
+
+const load_oversea_StockCandle23 = (id, unit, exchange_code) => {
     const interval = unit; // 캔들 간격
     const slidervalue = document.getElementById('simulatorSlider'); // 슬라이더 요소 가져오기
     // id : 종목
@@ -200,4 +259,119 @@ function handleSliderChangeDebounced(currentId,currentUnit,currentExchangeCode) 
         console.log("Debounced call: Loading chart...");
         load_oversea_StockCandle(currentId, currentUnit, currentExchangeCode);
     }, 300); // 사용자가 입력을 멈춘 후 300ms 뒤에 실행
+}
+
+
+
+
+
+
+
+
+
+
+function connectWebSocket() {
+    if (!approvalKey) {
+        console.error("웹소켓 접속키(approvalKey)가 없습니다.");
+        // 사용자에게 알림 또는 접속키 발급 로직 실행
+        return;
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log("웹소켓이 이미 연결되어 있습니다.");
+        // 필요하다면 현재 심볼 재구독 로직 추가
+        if (currentSymbol && !isSubscribed) {
+             subscribeRealtimePrice(currentSymbol, currentExchange);
+        }
+        return;
+    }
+
+    // 웹소켓 주소 확인 (실전투자 기준, ws://)
+    ws = new WebSocket("ws://ops.koreainvestment.com:21000");
+
+    ws.onopen = () => {
+        console.log("웹소켓 연결 성공");
+        isSubscribed = false; // 연결 시 구독 상태 초기화
+        // 연결 성공 후 현재 보고 있는 종목이 있다면 구독 시도
+        if (currentSymbol && currentExchange) {
+            subscribeRealtimePrice(currentSymbol, currentExchange);
+        }
+    };
+
+    ws.onmessage = handleWebSocketMessage; // 메시지 처리 함수 연결
+
+    ws.onerror = (error) => {
+        console.error("웹소켓 오류:", error);
+        isSubscribed = false;
+    };
+
+    ws.onclose = (event) => {
+        console.log("웹소켓 연결 종료:", event.code, event.reason);
+        isSubscribed = false;
+        ws = null; // 웹소켓 객체 초기화
+        // 필요 시 재연결 로직 추가
+        // setTimeout(connectWebSocket, 5000); // 5초 후 재연결 시도
+    };
+}
+
+// 실시간 시세 구독 함수
+function subscribeRealtimePrice(symbol, exchange) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {//연결 안된경우
+        connectWebSocket();
+        return;
+    }
+    if (!symbol || !exchange) {
+        console.warn("구독할 종목코드 또는 거래소 코드가 없습니다.");
+        return;
+    }
+
+    // tr_key 생성 (문서 기준, 무료 시세는 'D' + 거래소코드 + 종목코드)
+    // 미국 주식 무료 실시간 기준 (필요시 유료 'R' 또는 주간 'RBAQ' 등으로 변경)
+    const tr_key = `D${exchange}${symbol}`;
+    console.log(`실시간 시세 구독 요청: ${tr_key}`);
+
+    const subscriptionMessage = {
+        header: {
+            "approval_key": approvalKey,
+            "tr_type": "1", // 1: 등록
+            "custtype": "P", // 개인 고객
+            "content-type": "utf-8"
+        },
+        body: {
+            "tr_id": "HDFSCNT0", // API ID
+            "tr_key": tr_key
+        }
+    };
+    console.log("Sending Subscription Message:", JSON.stringify(subscriptionMessage, null, 2)); // 이 로그 출력 확인!
+
+    ws.send(JSON.stringify(subscriptionMessage));
+    // 참고: KIS API는 구독 성공/실패에 대한 응답 메시지를 보낼 수 있음 (onmessage에서 확인 필요)
+    // isSubscribed = true; // 응답 메시지 확인 후 설정하는 것이 더 정확함
+}
+
+
+
+
+
+// 실시간 시세 구독 해제 함수 (필요 시)
+function unsubscribeRealtimePrice(symbol, exchange) {
+     if (!ws || ws.readyState !== WebSocket.OPEN || !isSubscribed) {
+         console.warn("웹소켓이 연결되지 않았거나 구독 중이 아니어서 해제할 수 없습니다.");
+         return;
+     }
+     const tr_key = `D${exchange}${symbol}`; // 해제할 키 (구독 시 사용한 것과 동일)
+     console.log(`실시간 시세 구독 해제 요청: ${tr_key}`);
+     const unsubscriptionMessage = {
+         header: {
+             "approval_key": approvalKey,
+             "tr_type": "2", // 2: 해제
+             "custtype": "P",
+             "content-type": "utf-8"
+         },
+         body: {
+             "tr_id": "HDFSCNT0",
+             "tr_key": tr_key
+         }
+     };
+     ws.send(JSON.stringify(unsubscriptionMessage));
+     isSubscribed = false;
 }
