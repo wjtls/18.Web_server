@@ -60,161 +60,304 @@ class User(AbstractUser):
     
 '''
 
+# models.py
+from django.db import models, transaction
+from django.db.models import F
+from django.contrib.auth.models import AbstractUser, Group, Permission
+from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from datetime import timedelta
+from decimal import Decimal
+import math # 레벨 계산을 위해 math 모듈 임포트
+
+# 티어 정보 정의 (임계값, 이름, 이미지 경로)
+# 순서 중요: 높은 티어부터 낮은 티어 순으로 정의해야 get_tier_info에서 올바르게 작동
+# 이미지는 예시 경로이며, 실제 static 파일 경로에 맞게 수정필요
+# 랭커 정보는 함수에서 별도 처리
+TIER_THRESHOLDS = [
+    (40000, 'Champion', '🏆'),  # 챔피언: 트로피
+    (20000, 'Grandmaster', '👑'),  # 그랜드마스터: 왕관
+    (8000, 'Master', '🌟'),  # 마스터: 빛나는 별
+    (4000, 'Diamond', '💎'),  # 다이아몬드: 보석
+    (2000, 'Platinum', '💍'),  # 플래티넘: 별
+    (1000, 'Gold', '🥇'),  # 골드: 금메달
+    (500, 'Silver', '🥈'),  # 실버: 은메달
+    (100, 'Bronze', '🥉'),  # 브론즈: 동메달
+    (-float('inf'), '초보자', '🌱'), # 100점 미만 또는 초기 상태
+]
+
+
+
 class User(AbstractUser):
-    # --- 기존 추가 필드들 ---
+    # --- 기본 및 기존 필드 ---
     cash = models.FloatField(default=1000000.0)
     symbol = models.CharField(max_length=10, null=True, blank=True)
     stock_count = models.IntegerField(default=0)
     portfolio_value = models.FloatField(default=1000000.0)
-    level = models.IntegerField(default=1)
-    user_tier = models.CharField(max_length=50, default="Bronze")
+    # level 필드는 이제 계산된 프로퍼티를 사용하므로, 직접 관리하지 않을 수 있음
+    # level = models.IntegerField(default=1) # 필요하다면 유지 또는 @property로 대체
+    user_tier = models.CharField(max_length=50, default="초보자") # 기본값 변경
     real_cash = models.FloatField(default=0)
-    # otp_secret = models.CharField(max_length=16, unique=True, null=True, blank=True)
-    # is_2fa_enabled = models.BooleanField(default=False)
-
-    # --- ↓↓↓ ASI Coin 관련 필드 추가 ↓↓↓ ---
-
     asi_coin_balance = models.DecimalField(
         verbose_name=_("ASI 코인 잔액(오프체인)"),
-        max_digits=38,     # 총 자릿수 (2000억 + 소수점 18자리 충분히 포함)
-        decimal_places=18, # AsiCoin의 소수점 자릿수
-        default=Decimal('0.0'), # 기본값은 0
-        help_text=_("플랫폼 내부에서 사용하는 사용자의 오프체인 ASI 코인 잔액입니다.") # 관리자 화면 등 도움말
+        max_digits=38, decimal_places=18, default=Decimal('0.0'),
+        help_text=_("플랫폼 내부에서 사용하는 사용자의 오프체인 ASI 코인 잔액입니다.")
     )
-
     wallet_address = models.CharField(
-        verbose_name=_("출금 지갑 주소"),
-        max_length=42, # Ethereum/Polygon 주소 길이 ('0x' 포함 42자)
-        blank=True,    # 사용자가 입력 안해도 됨 (필수 X)
-        null=True,     # DB에 NULL 값 허용 (입력 안된 상태)
-        unique=True,   # 하나의 지갑 주소는 한 명의 사용자만 등록 가능 (선택 사항)
+        verbose_name=_("출금 지갑 주소"), max_length=42, blank=True, null=True, unique=True,
         help_text=_("사용자가 ASI 코인을 외부로 출금할 때 사용할 개인 지갑 주소입니다 (예: 0x...).")
-        # unique=True로 설정하면 여러 사용자가 같은 주소를 등록할 수 없음.
-        # 고유할 필요가 없다면 unique=True 속성을 제거.
-        # (null=True와 unique=True는 함께 사용 가능합니다. NULL 값은 고유성 제약 조건에 영향을 받지 않음.)
     )
-
+    wallet_verified = models.BooleanField(_("지갑 주소 인증 여부"), default=False)
+    phone_number = models.CharField(_("휴대폰 번호"), max_length=20, blank=True, null=True)
+    phone_verified = models.BooleanField(_("휴대폰 인증 여부"), default=False)
     nickname = models.CharField(
-        _("닉네임"),
-        max_length=50,  # 닉네임 최대 길이 (원하는 대로 설정)
-        unique=True,  # 닉네임 중복을 허용하지 않으려면 True, 허용하면 False (True 설정 시 동명이인 불가)
-        blank=True,  # 회원가입 시 필수가 아니라면 True
-        null=True,  # DB에 NULL값 허용 (blank=True 와 보통 같이 사용)
+        _("닉네임"), max_length=50, unique=True, blank=True, null=True,
         help_text=_("플랫폼 내 활동 시 보여질 별명입니다.")
     )
-
-
-    # --- ↓↓↓ 구독 플랜 필드 추가 ↓↓↓ ---
-    # 구독 플랜 선택지 정의 (코드 가독성을 위해 상수로 정의)
-    PLAN_FREE = 'FREE'
-    PLAN_BASIC = 'BASIC'
-    PLAN_STANDARD = 'STANDARD'
-    PLAN_PREMIUM = 'PREMIUM'
-
-    PLAN_CHOICES = [
-        (PLAN_FREE, _('무료등급')),  # (DB에 저장될 실제 값, 화면에 보여질 이름)
-        (PLAN_BASIC, _('베이직')),
-        (PLAN_STANDARD, _('스탠다드')),
-        (PLAN_PREMIUM, _('프리미엄')),
-    ]
-
-    # 구독 플랜 필드 정의
+    nickname_last_updated = models.DateTimeField(_("닉네임 마지막 변경일"), null=True, blank=True)
     subscription_plan = models.CharField(
-        _("구독 플랜"),
-        max_length=10,  # 선택지 값 중 가장 긴 문자열 길이 ('STANDARD')에 맞춤
-        choices=PLAN_CHOICES,  # 위에서 정의한 선택지 목록 지정
-        default=PLAN_FREE,  # 사용자가 처음 가입 시 기본값은 '무료등급'
-        help_text=_("사용자의 현재 구독 플랜 등급입니다.")
+        _("구독 플랜"), max_length=10, choices=[('FREE', _('무료등급')), ('BASIC', _('베이직')), ('STANDARD', _('스탠다드')), ('PREMIUM', _('프리미엄'))],
+        default='FREE', help_text=_("사용자의 현재 구독 플랜 등급입니다.")
     )
-
-
-
-    # --- 기존 related_name 충돌 해결 부분 (제공해주신 내용 유지) ---
-    groups = models.ManyToManyField(
-        Group,
-        verbose_name=_('groups'),
-        blank=True,
-        help_text=_(
-            'The groups this user belongs to. A user will get all permissions '
-            'granted to each of their groups.'
-        ),
-        related_name="main_user_groups", # 제공해주신 related_name
-        related_query_name="user",
-    )
-
-    user_permissions = models.ManyToManyField(
-        Permission,
-        verbose_name=_('user permissions'),
-        blank=True,
-        help_text=_('Specific permissions for this user.'),
-        related_name="main_user_permissions", # 제공해주신 related_name
-        related_query_name="user",
-    )
-
-    user_tier_xp = models.FloatField(  # 또는 DecimalField
-        _("티어 경험치"),
-        default=0.0,
-        help_text=_("수익/손실에 따라 변동되는 티어 경험치입니다.")
-    )
-
     position_sharing_enabled = models.BooleanField(
-        _("포지션 공개 설정"),
-        default=False,  # 기본값은 비공개
+        _("포지션 공개 설정"), default=False,
         help_text=_("프로필에서 포지션 공개 여부를 설정합니다. 수익 시 보상에 영향을 줄 수 있습니다.")
     )
-
-    level_xp = models.FloatField(  # 또는 IntegerField (레벨 시스템 정책에 따라)
-        _("레벨 경험치"),
-        default=0.0,
-        help_text=_("레벨업에 사용되는 경험치입니다. ASI 코인으로 구매 가능합니다.")
-    )
-    # 참고: 기존 'level' 필드는 이 'level_xp' 값에 따라 결정되도록 로직 변경 가능
-    # 예: property나 별도 함수로 get_level() 등 구현
-
     nickname_color = models.CharField(
-        _("닉네임 색상"),
-        max_length=7,  # 예: '#RRGGBB' 형식
-        default="#FFFFFF",  # 기본값 (예: 흰색)
-        blank=True,
+        _("닉네임 색상"), max_length=7, default="#FFFFFF", blank=True,
         help_text=_("채팅 등에서 사용될 닉네임 색상 코드입니다.")
     )
-
-    #AI 트레이더 자동매매 구독시 소모 코인
     auto_trade_seconds_remaining = models.IntegerField(
-        _("남은 자동매매 시간(초)"),
-        default=0,
+        _("남은 자동매매 시간(초)"), default=0,
         help_text=_("ASI 코인으로 구매하여 충전된 자동매매 가능 시간(초 단위)입니다.")
     )
 
-    def update_tier_xp(self, xp_change: float):
-        """ User의 티어 경험치를 안전하게 업데이트 (DB 저장 포함) """
-        try:
-            # transaction.atomic을 사용하여 DB 업데이트의 원자성 보장
-            with transaction.atomic():
-                # select_for_update로 해당 레코드에 락(lock) 설정 (동시 업데이트 방지)
-                user_to_update = User.objects.select_for_update().get(pk=self.pk)
-                # F() 표현식을 사용하여 현재 DB 값 기준으로 안전하게 증감
-                user_to_update.user_tier_xp = F('user_tier_xp') + xp_change
-                user_to_update.save(update_fields=['user_tier_xp'])  # 변경된 필드만 저장
-                user_to_update.refresh_from_db()  # DB에서 최신값 다시 읽기
-                print(f"로그: 사용자 {self.username} 티어 경험치 {xp_change:+.1f} 적용. 현재 XP: {user_to_update.user_tier_xp:.1f}")
+    # --- 레벨 관련 필드 및 로직 ---
+    level_xp = models.FloatField(
+        _("레벨 경험치"), default=0.0,
+        help_text=_("레벨업에 사용되는 경험치입니다. ASI 코인으로 구매 가능합니다.")
+    )
 
-                # TODO: 여기서 경험치 변경에 따른 티어(user_tier) 변경 로직 추가 가능
-                # new_tier = calculate_tier(user_to_update.user_tier_xp)
-                # if user_to_update.user_tier != new_tier:
-                #     user_to_update.user_tier = new_tier
-                #     user_to_update.save(update_fields=['user_tier'])
-                #     print(f"로그: 사용자 {self.username} 티어 변경 -> {new_tier}")
+    # --- 전적 관련 필드 ---
+    total_wins = models.IntegerField(_("총 승리"), default=0)
+    total_losses = models.IntegerField(_("총 패배"), default=0)
+
+    # --- 티어 관련 필드 ---
+    user_tier_xp = models.FloatField(
+        _("티어 경험치(포인트)"), default=0.0,
+        help_text=_("수익/손실 및 수익률에 따라 변동되는 티어 포인트입니다.")
+    )
+
+    # --- 랭커 관련 필드 ---
+    profit_rank = models.IntegerField(
+        _("수익 랭킹"), null=True, blank=True, db_index=True, # 랭킹 계산 후 업데이트, 인덱스 추가
+        help_text=_("전체 사용자 중 수익 기준 랭킹 (낮을수록 높음, 챔피언 티어 랭커 판별용)")
+    )
+
+
+    # --- ManyToMany 필드 (related_name 유지) ---
+    groups = models.ManyToManyField(
+        Group, verbose_name=_('groups'), blank=True,
+        help_text=_('The groups this user belongs to...'),
+        related_name="main_user_groups", related_query_name="user",
+    )
+    user_permissions = models.ManyToManyField(
+        Permission, verbose_name=_('user permissions'), blank=True,
+        help_text=_('Specific permissions for this user.'),
+        related_name="main_user_permissions", related_query_name="user",
+    )
+
+    # --- 메서드 및 프로퍼티 ---
+
+    @property
+    def current_level(self):
+        """ 현재 레벨 경험치(level_xp)를 기준으로 레벨을 계산합니다. """
+        xp = self.level_xp
+        if xp < 1000:
+            return 1
+        # 레벨 L의 최소 요구 XP = 1000 * 2^(L-2)
+        # xp >= 1000 * 2^(L-2)
+        # xp / 1000 >= 2^(L-2)
+        # log2(xp / 1000) >= L-2
+        # L <= log2(xp / 1000) + 2
+        # 단, xp가 정확히 경계값일 때 다음 레벨로 계산되지 않도록 처리 필요
+        # 예를 들어 xp=1000일 때 L=2, xp=2000일 때 L=3
+        level = math.floor(math.log2(xp / 1000)) + 2 if xp >= 1000 else 1
+        # 경계값 확인: xp=1000 -> log2(1)+2=2, xp=2000 -> log2(2)+2=3, xp=4000->log2(4)+2=4
+        # 정확히 경계값일 때 해당 레벨이 되므로 floor 사용이 적절
+        return int(level) # 정수형으로 반환
+
+    def add_level_xp(self, xp_amount: float):
+        """ 레벨 경험치를 추가하고, 필요한 경우 레벨을 업데이트합니다. """
+        if xp_amount == 0:
+            return False # 변경 없으면 종료
+
+        try:
+            with transaction.atomic():
+                user_locked = User.objects.select_for_update().get(pk=self.pk)
+                current_xp_before = user_locked.level_xp
+                current_level_before = user_locked.current_level # 변경 전 레벨 계산
+
+                user_locked.level_xp = F('level_xp') + xp_amount
+                user_locked.save(update_fields=['level_xp'])
+                user_locked.refresh_from_db() # DB에서 최신 XP 읽기
+
+                print(f"로그: 사용자 {self.username} 레벨 경험치 {xp_amount:+.1f} 적용. 현재 XP: {user_locked.level_xp:.1f}")
+
+                # 레벨 변경 확인 및 업데이트
+                new_level = user_locked.current_level
+                if new_level > current_level_before:
+                    # self.level 필드가 있다면 업데이트 (없으면 이 부분 불필요)
+                    # user_locked.level = new_level
+                    # user_locked.save(update_fields=['level'])
+                    print(f"로그: 사용자 {self.username} 레벨 상승! {current_level_before} -> {new_level}")
+                    # TODO: 레벨업 시 알림, 보상 등 추가 로직 실행 가능
+                return True
+        except Exception as e:
+            print(f"오류: 레벨 경험치 업데이트 실패 (사용자: {self.username}): {e}")
+            return False
+
+    def record_trade_result(self, is_win: bool, profit_loss_percentage: float):
+        """
+        거래 결과를 기록하고 티어 경험치를 업데이트합니다.
+        profit_loss_percentage: 수익률 (예: 0.1은 10% 수익, -0.05는 5% 손실)
+        """
+        if is_win and profit_loss_percentage <= 0:
+             print(f"경고: 승리(is_win=True)로 기록되었으나 수익률({profit_loss_percentage})이 0 이하입니다.")
+             # 필요시 에러 처리 또는 로직 조정
+        if not is_win and profit_loss_percentage >= 0:
+             print(f"경고: 패배(is_win=False)로 기록되었으나 손실률({profit_loss_percentage})이 0 이상입니다.")
+             # 필요시 에러 처리 또는 로직 조정
+
+        try:
+            with transaction.atomic():
+                user_locked = User.objects.select_for_update().get(pk=self.pk)
+                current_tier_before = user_locked.get_tier_info()['name']
+
+                # 1. 전적 업데이트
+                if is_win:
+                    user_locked.total_wins = F('total_wins') + 1
+                    update_fields_trade = ['total_wins']
+                    print(f"로그: 사용자 {self.username} 1승 추가. 총 {user_locked.total_wins + 1}승")
+                else:
+                    user_locked.total_losses = F('total_losses') + 1
+                    update_fields_trade = ['total_losses']
+                    print(f"로그: 사용자 {self.username} 1패 추가. 총 {user_locked.total_losses + 1}패")
+                user_locked.save(update_fields=update_fields_trade)
+                user_locked.refresh_from_db() # 전적 업데이트 반영
+
+                # 2. 티어 포인트 계산 및 업데이트
+                # 승리: +10 * 수익률, 패배: -10 * |손실률|
+                points_change = 10 * abs(profit_loss_percentage)
+                if not is_win:
+                    points_change *= -1
+
+                user_locked.user_tier_xp = F('user_tier_xp') + points_change
+                user_locked.save(update_fields=['user_tier_xp'])
+                user_locked.refresh_from_db() # 티어 포인트 업데이트 반영
+
+                print(f"로그: 사용자 {self.username} 티어 포인트 {points_change:+.2f} 적용 ({'승' if is_win else '패'}, 수익률: {profit_loss_percentage:.2%}). 현재 포인트: {user_locked.user_tier_xp:.2f}")
+
+                # 3. 티어 이름 업데이트 확인
+                new_tier_info = user_locked.get_tier_info()
+                new_tier_name = new_tier_info['name'] # 'Ranker 15' 같은 형태 포함
+
+                # user_tier 필드에 저장될 기본 티어 이름 (랭크 숫자 제외)
+                base_tier_name = new_tier_name.split(' ')[0] if 'Ranker' in new_tier_name else new_tier_name
+
+                if user_locked.user_tier != base_tier_name:
+                    user_locked.user_tier = base_tier_name
+                    user_locked.save(update_fields=['user_tier'])
+                    print(f"로그: 사용자 {self.username} 티어 변경! {current_tier_before} -> {new_tier_name}")
+                    # TODO: 티어 변경 시 알림 등 추가 로직
+
+                return True
+
+        except Exception as e:
+            print(f"오류: 거래 결과 기록 실패 (사용자: {self.username}): {e}")
+            return False
+
+    def get_tier_info(self):
+        """
+        현재 티어 경험치(user_tier_xp)와 **미리 계산된 포트폴리오 가치 랭킹(profit_rank)**을 기준으로
+        티어 정보(이름, 이모지, 랭크 숫자)를 반환합니다.
+
+        **중요:** self.profit_rank 필드는 **반드시 외부 프로세스(예: 스케줄된 작업)에 의해**
+              주기적으로 모든 사용자의 portfolio_value를 기준으로 계산되어 **업데이트되어야**
+              정확한 랭커 판별이 가능합니다. 이 메서드는 저장된 profit_rank 값을 읽기만 합니다.
+        """
+        xp = self.user_tier_xp
+        # profit_rank 필드는 외부에서 portfolio_value 기준으로 계산되어 업데이트되었다고 가정
+        rank = self.profit_rank
+
+        current_tier = None
+        # TIER_THRESHOLDS 순회 (이모지를 'image' 키로 사용한 사용자의 코드 기준)
+        for threshold, name, image_or_emoji in TIER_THRESHOLDS:
+            if xp >= threshold:
+                # 'image' 키를 사용하되, 값은 이모지 문자열
+                current_tier = {'name': name, 'image': image_or_emoji, 'rank_number': None}
+                break
+
+        # 티어가 결정되지 않은 경우 초보자로 처리 (마지막 항목 사용)
+        if current_tier is None:
+            threshold, name, image_or_emoji = TIER_THRESHOLDS[-1]
+            current_tier = {'name': name, 'image': image_or_emoji, 'rank_number': None}
+
+        # 챔피언 티어 & 랭커 조건 확인
+        # 1. 기본 티어가 챔피언인가? (XP 조건 만족)
+        # 2. profit_rank 값이 유효한가? (None이 아니고 1~50 사이)
+        if current_tier['name'] == 'Champion' and rank is not None and 1 <= rank <= 50:
+            # 조건 만족 시 랭커 정보로 덮어쓰기
+            current_tier['name'] = f"Ranker ({rank} 위)" # 사용자가 제공한 이름 형식
+            current_tier['rank_number'] = rank # 프론트엔드에서 숫자 표시용
+
+        return current_tier
+
+
+    # --- 기존 메서드들 ---
+    def update_tier_xp(self, xp_change: float):
+        """ User의 티어 경험치(포인트)를 직접 업데이트 (거래 결과 외, 예: 이벤트 보상) """
+        try:
+            with transaction.atomic():
+                user_locked = User.objects.select_for_update().get(pk=self.pk)
+                current_tier_before = user_locked.get_tier_info()['name']
+
+                user_locked.user_tier_xp = F('user_tier_xp') + xp_change
+                user_locked.save(update_fields=['user_tier_xp'])
+                user_locked.refresh_from_db()
+                print(f"로그: 사용자 {self.username} 티어 포인트 {xp_change:+.2f} 직접 적용. 현재 포인트: {user_locked.user_tier_xp:.2f}")
+
+                # 티어 이름 업데이트 확인
+                new_tier_info = user_locked.get_tier_info()
+                new_tier_name = new_tier_info['name']
+                base_tier_name = new_tier_name.split(' ')[0] if 'Ranker' in new_tier_name else new_tier_name
+
+                if user_locked.user_tier != base_tier_name:
+                    user_locked.user_tier = base_tier_name
+                    user_locked.save(update_fields=['user_tier'])
+                    print(f"로그: 사용자 {self.username} 티어 변경! {current_tier_before} -> {new_tier_name}")
 
                 return True
         except Exception as e:
-            print(f"오류: 티어 경험치 업데이트 실패 (사용자: {self.username}): {e}")
+            print(f"오류: 티어 포인트 직접 업데이트 실패 (사용자: {self.username}): {e}")
             return False
+
+    def can_change_nickname(self):
+        if not self.nickname_last_updated:
+            return True
+        # nickname_last_updated가 timezone-aware datetime인지 확인 필요
+        # Django 설정(USE_TZ=True)에 따라 다름
+        if timezone.is_naive(self.nickname_last_updated):
+             # Naive datetime이면 현재 시간도 naive로 비교
+             now = timezone.make_naive(timezone.now(), timezone.get_current_timezone())
+             return now >= self.nickname_last_updated + timedelta(minutes=5)
+        else:
+             # Aware datetime이면 그대로 비교
+             return timezone.now() >= self.nickname_last_updated + timedelta(minutes=5)
+
 
     def __str__(self):
         return self.username
-
-
 
 
 
@@ -273,6 +416,34 @@ class PositionViewSubscription(SubscriptionBase):
 
 
 
+from django.db.models import Window, F
+from django.db.models.functions import Rank
+from .models import User # User 모델 임포트
+
+def update_portfolio_rankings():
+    """ 모든 사용자의 portfolio_value를 기준으로 순위를 매겨 profit_rank 필드를 업데이트. """
+    print("포트폴리오 랭킹 업데이트 시작...")
+
+    # Window 함수를 사용하여 DB 레벨에서 랭킹 계산 (효율적)
+    # portfolio_value가 높은 순서대로 랭크 부여 (1위, 2위, ...)
+    users_to_update = User.objects.annotate(
+        current_rank=Window(
+            expression=Rank(),
+            order_by=F('portfolio_value').desc() # portfolio_value 내림차순
+        )
+    )
+
+    # 계산된 랭킹으로 각 사용자의 profit_rank 필드 업데이트
+    # bulk_update 사용이 더 효율적일 수 있음
+    updated_count = 0
+    for user in users_to_update:
+        # 랭킹이 변경되었거나 기존 랭킹이 없을 때만 업데이트 (선택적 최적화)
+        if user.profit_rank != user.current_rank:
+            user.profit_rank = user.current_rank
+            user.save(update_fields=['profit_rank'])
+            updated_count += 1
+
+    print(f"포트폴리오 랭킹 업데이트 완료. {updated_count}명 업데이트됨.")
 
 
 

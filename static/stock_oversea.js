@@ -104,11 +104,13 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
 
     const interval = unit;
     const slidervalue = document.getElementById('simulatorSlider');
+    const priceElement = document.getElementById('chart-price'); // 현재가 표시할 <b> 태그 찾기
     const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50;
+    document.getElementById('identify').value = id; //id 값 업데이트 차트에서
+    document.getElementById('exchange').value = exchange_code
+    document.getElementById('chart-title').textContent = `종목 : ${id}` //차트 타이틀업뎃
 
     getJson2(`/oversea_api/${interval}/${id}/${exchange_code}`).then(json => {
-         // --- ★★★ 수정/복원 필요한 부분 시작 ★★★ ---
-
          // 1. API 응답에서 데이터 추출 및 기본 검사
          let rawData = json.response?.data; // API 응답 구조에 맞게 조정 필요
          if (!Array.isArray(rawData)) {
@@ -141,47 +143,38 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
          // 차트 렌더링
          renderChart(currentChartData);
 
+         if (priceElement) { // 해당 ID를 가진 HTML 요소가 있는지 확인
+             if (currentChartData && currentChartData.length > 0) {
+                 // chartData 배열의 가장 마지막 요소(가장 최신 캔들)의 종가(.c) 가져오기
+                 const lastClosePrice = currentChartData[currentChartData.length - 1].c;
+
+                 if (typeof lastClosePrice === 'number' && !isNaN(lastClosePrice)) {
+                     // 숫자가 맞으면 화면에 표시 (소수점 자릿수는 필요에 따라 toFixed()로 조절)
+                     priceElement.textContent = lastClosePrice.toFixed(4); // 예: TQQQ는 소수점 4자리까지 표시
+                     console.log(`초기 가격 업데이트: ${currentSymbol} 마지막 종가 ${lastClosePrice.toFixed(4)} 로 #chart-price 업데이트 완료.`);
+                     // (선택 사항) 초기 가격 표시 시 CSS 클래스 초기화 (예: price-neutral)
+                     // priceElement.className = 'price-neutral';
+                 } else {
+                      console.warn("차트 데이터의 마지막 종가 값이 유효하지 않습니다:", lastClosePrice);
+                      priceElement.textContent = '--.--'; // 유효하지 않으면 대체 텍스트
+                 }
+             } else {
+                 // API에서 과거 데이터를 못 받아왔거나 비어있는 경우
+                 console.warn("차트 데이터가 비어있어 초기 가격을 표시할 수 없습니다.");
+                 priceElement.textContent = '--.--'; // 데이터 없을 때 대체 텍스트
+             }
+         } else {
+             console.error("#chart-price 요소를 HTML에서 찾을 수 없습니다."); // ID 오타 등 확인 필요
+         }
+         // --- ▲▲▲ 초기 현재가 표시 업데이트 로직 완료 ▲▲▲ ---
+
          //웹소켓 실시간 가격
          subscribeRealtimePrice(currentSymbol, currentExchange);
-
 
     }).catch(error => {
          console.error(`/${id}/${interval}/ 데이터 요청 중 오류:`, error); // 에러 로깅
     });
 };
-
-const load_oversea_StockCandle23 = (id, unit, exchange_code) => {
-    const interval = unit; // 캔들 간격
-    const slidervalue = document.getElementById('simulatorSlider'); // 슬라이더 요소 가져오기
-    // id : 종목
-    // 표시할 캔들 개수 (최신 n개)를 설정
-    const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50; // 기본값: 최신 50개
-    console.log(numberOfCandlesToShow,id,unit,exchange_code, '캔들 개수 설정 완료');
-
-    // 데이터 요청
-    getJson2(`/oversea_api/${interval}/${id}/${exchange_code}`).then(json => {
-        let rawData = json.response.data.sort((a, b) => new Date(a.localDate) - new Date(b.localDate)); // 데이터 정렬 (오름차순)
-
-        // 최신 n개의 캔들만 선택
-        const startIndex = Math.max(0, rawData.length - numberOfCandlesToShow);
-        const latestResult = rawData.slice(startIndex);
-
-        // 데이터를 차트 형식으로 변환
-        const chartData = latestResult.map(item => ({
-            x: new Date(item.localDate).getTime(), // localDate를 타임스탬프로 변환
-            o: item.openPrice,                    // openPrice
-            h: item.highPrice,                   // highPrice
-            l: item.lowPrice,                    // lowPrice
-            c: item.closePrice                   // closePrice
-        }));
-
-        console.log(chartData, '차트 데이터 변환 완료');
-        renderChart(chartData); // 차트 렌더링 함수 호출
-    }).catch(error => {
-        console.error("데이터 요청 중 오류 발생:", error);
-    });
-};
-
 
 
 const load_oversea_StockOrder = id => {
@@ -268,10 +261,10 @@ function handleSliderChangeDebounced(currentId,currentUnit,currentExchangeCode) 
 
 
 
-
-
+//한국투자증권 웹소켓
 function connectWebSocket() {
     if (!approvalKey) {
+
         console.error("웹소켓 접속키(approvalKey)가 없습니다.");
         // 사용자에게 알림 또는 접속키 발급 로직 실행
         return;
@@ -308,51 +301,55 @@ function connectWebSocket() {
         console.log("웹소켓 연결 종료:", event.code, event.reason);
         isSubscribed = false;
         ws = null; // 웹소켓 객체 초기화
-        // 필요 시 재연결 로직 추가
-        // setTimeout(connectWebSocket, 5000); // 5초 후 재연결 시도
     };
 }
 
-// 실시간 시세 구독 함수
-function subscribeRealtimePrice(symbol, exchange) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {//연결 안된경우
-        connectWebSocket();
-        return;
-    }
-    if (!symbol || !exchange) {
-        console.warn("구독할 종목코드 또는 거래소 코드가 없습니다.");
-        return;
-    }
 
-    // tr_key 생성 (문서 기준, 무료 시세는 'D' + 거래소코드 + 종목코드)
-    // 미국 주식 무료 실시간 기준 (필요시 유료 'R' 또는 주간 'RBAQ' 등으로 변경)
-    const tr_key = `D${exchange}${symbol}`;
-    console.log(`실시간 시세 구독 요청: ${tr_key}`);
+
+// 한국투자증권 웹소켓 실시간 데이터 (마지막 1개)
+function subscribeRealtimePrice(symbol, exchange) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) { console.warn("구독 시 웹소켓 미연결"); return; }
+    if (!approvalKey) { console.error("[WebSocket] 구독 시점 approvalKey 없음!"); return; }
+    if (!symbol || !exchange) { console.warn("구독 정보 부족 (symbol or exchange)"); return; }
+
+    const tr_id = "HDFSCNT0"; // 해외주식 실시간 현재가 TR ID
+
+    // ★★★ tr_key 형식: HDFSCNT0 문서 기준 'D'+시장코드+종목코드 ★★★
+    // (이 형식이 맞는지 KIS 문서를 통해 다시 한번 확인하세요!)
+    const tr_key = `D${exchange}${symbol}`; // 예: DNASAAPL 또는 DNASTQQQ
+
 
     const subscriptionMessage = {
         header: {
             "approval_key": approvalKey,
             "tr_type": "1", // 1: 등록
-            "custtype": "P", // 개인 고객
+            "custtype": "P", // 개인고객
             "content-type": "utf-8"
         },
         body: {
-            "tr_id": "HDFSCNT0", // API ID
+            "input":{
+            "tr_id": tr_id,
             "tr_key": tr_key
+            }
         }
     };
-    console.log("Sending Subscription Message:", JSON.stringify(subscriptionMessage, null, 2)); // 이 로그 출력 확인!
+    const jsonMessageToSend = JSON.stringify(subscriptionMessage);
 
-    ws.send(JSON.stringify(subscriptionMessage));
-    // 참고: KIS API는 구독 성공/실패에 대한 응답 메시지를 보낼 수 있음 (onmessage에서 확인 필요)
-    // isSubscribed = true; // 응답 메시지 확인 후 설정하는 것이 더 정확함
+    try {
+        ws.send(jsonMessageToSend);
+        // isSubscribed = true; // 성공 응답(JSON)을 받은 후 설정하는 것이 더 정확합니다.
+    } catch (e) {
+        console.error("웹소켓 send 오류:", e);
+        isSubscribed = false; // 전송 실패 시 구독 상태 false
+    }
 }
 
 
 
 
 
-// 실시간 시세 구독 해제 함수 (필요 시)
+
+// 한국투자증권 웹소켓 실시간 시세 구독 해제 함수 (필요 시)
 function unsubscribeRealtimePrice(symbol, exchange) {
      if (!ws || ws.readyState !== WebSocket.OPEN || !isSubscribed) {
          console.warn("웹소켓이 연결되지 않았거나 구독 중이 아니어서 해제할 수 없습니다.");
@@ -375,3 +372,246 @@ function unsubscribeRealtimePrice(symbol, exchange) {
      ws.send(JSON.stringify(unsubscriptionMessage));
      isSubscribed = false;
 }
+
+
+
+
+
+//한국투자증권 웹소켓
+async function initializeWebSocket() {
+    console.log("[WebSocket] 승인키 API 호출 시도...");
+    // 기존 연결 종료 및 변수 초기화
+    if (ws && ws.readyState !== WebSocket.CLOSED) {
+        console.log("[WebSocket] 기존 웹소켓 연결 종료 시도.");
+        ws.close(); ws = null;
+    }
+    approvalKey = null; isSubscribed = false;
+
+    try {
+        // Django 템플릿이 아닌 별도 JS 파일이므로, URL을 직접 문자열로 쓰거나
+        // HTML 어딘가에 data 속성 등으로 URL을 저장해두고 읽어와야 합니다.
+        // 여기서는 임시로 URL 문자열을 직접 사용합니다. (urls.py 경로와 일치해야 함)
+        const apiKeyUrl = "/api/get_websocket_key/"; // ★ Django {% url %} 태그 대신 직접 경로 사용 ★
+        console.log("[WebSocket] 승인키 요청 URL:", apiKeyUrl);
+
+        // --- ↓↓↓ CSRF 헤더 제거! ↓↓↓ ---
+        const response = await fetch(apiKeyUrl, {
+            method: 'GET'
+            // headers: { 'X-CSRFToken': csrfToken } // <-- 이 줄 삭제 또는 주석 처리!
+        });
+        // --- ↑↑↑ CSRF 헤더 제거 완료! ↑↑↑ ---
+
+        if (!response.ok) { // HTTP 에러 처리
+            let errorMsg = `승인키 API 서버 응답 오류: ${response.status} ${response.statusText}`;
+            try { const errorData = await response.json(); errorMsg += ` - ${errorData.message || '내용 없음'}`; } catch(e) {}
+            throw new Error(errorMsg);
+        }
+        const data = await response.json(); // 정상 응답 JSON 파싱
+
+        if (data.success && data.approval_key) {
+            approvalKey = data.approval_key; // 전역 변수에 키 저장
+            console.log("[WebSocket] 승인키 성공적으로 받아옴 (키 일부):", approvalKey.substring(0, 10) + "...");
+
+            // 'approvalKeyReady' 이벤트 발생 (stock_oversea.js 등 다른 스크립트 연동용)
+            console.log("[WebSocket] approvalKeyReady 이벤트 발생시킴");
+            const event = new CustomEvent('approvalKeyReady', { detail: { key: approvalKey } });
+            document.dispatchEvent(event);
+
+            connectWebSocket(); // 웹소켓 연결 시도
+        } else {
+            // API 응답은 왔으나 success:false 또는 키 없음
+            throw new Error(data.message || "응답에 approval_key 없음");
+        }
+    } catch (error) {
+        // fetch 자체 실패 또는 위에서 발생시킨 오류
+        console.error("[WebSocket] 승인키 API 호출/처리 중 오류:", error);
+        alert(`실시간 데이터 연결 키 요청 중 오류: ${error.message}`);
+        // 키 발급 실패 시 웹소켓 연결 시도 안 함
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// 한국투자증권 api 실시간 데이터 (n개)
+function startRealtimePolling(symbol, market) {
+    if (realtimePollingIntervalId) { // 혹시 모를 중복 실행 방지
+        clearInterval(realtimePollingIntervalId);
+    }
+    console.log(`실시간 폴링 시작: ${symbol} (${market}), 간격: ${REALTIME_POLLING_INTERVAL_MS}ms`);
+    // 즉시 한 번 호출하여 빠르게 첫 업데이트 시도 (선택 사항)
+    fetchAndUpdateRealtimeCandle(symbol, market);
+
+    realtimePollingIntervalId = setInterval(() => {
+        fetchAndUpdateRealtimeCandle(symbol, market);
+    }, REALTIME_POLLING_INTERVAL_MS);
+}
+
+// 한국투자증권 api 실시간 데이터. 실시간 캔들 데이터 가져와서 차트 업데이트하는 함수
+function fetchAndUpdateRealtimeCandle(symbol, market) {
+    // console.log(`실시간 캔들 요청: /api/realtime_candle/${market}/${symbol}/`); // 너무 자주 찍히므로 필요시 주석 해제
+    getJson2(`/api/realtime_candle/${market}/${symbol}/`).then(response => {
+        if (response.success && response.data) {
+            const latestCandleData = response.data;
+            // console.log("실시간 캔들 수신:", latestCandleData); // 수신 데이터 확인
+
+            // 수신 데이터를 차트 형식으로 변환
+            const newCandle = {
+                x: new Date(latestCandleData.localDate).getTime(),
+                o: parseFloat(latestCandleData.openPrice),
+                h: parseFloat(latestCandleData.highPrice),
+                l: parseFloat(latestCandleData.lowPrice),
+                c: parseFloat(latestCandleData.closePrice),
+                v: parseInt(latestCandleData.volume, 10) || 0
+            };
+
+            if (!newCandle.x || isNaN(newCandle.c)) {
+                 console.warn("수신된 실시간 캔들 데이터 형식 오류:", latestCandleData);
+                 return;
+            }
+
+            // currentChartData에 병합 (가장 중요!)
+            mergeRealtimeCandle(newCandle);
+
+            // 차트 업데이트 (update 사용 권장)
+            if (chartInstance) {
+                // chartInstance.data = ??? // data 직접 수정보다는 update() 사용
+                // chartInstance.data.datasets[0].data = currentChartData; // 캔들스틱 데이터 업데이트
+                // 다른 지표(MA, BB 등) 데이터도 업데이트 필요 시 여기서 계산 및 업데이트
+                // renderChartWithFeatures를 다시 호출하면 전체를 다시 그리지만, 플래그 관리가 중요
+                // 여기서는 renderChartWithFeatures를 다시 호출하여 지표까지 업데이트하는 방식 사용 (단, 성능 주의)
+                if (!isChartRendering) { // renderChartWithFeatures의 플래그 확인
+                     renderChartWithFeatures(currentChartData); // 지표까지 다시 계산해서 그림
+                     // console.log("실시간 데이터 반영하여 차트 업데이트 (renderChartWithFeatures)");
+                } else {
+                     // console.log("다른 렌더링 작업 중이므로 실시간 업데이트 건너<0xEB><0x9B><0x81>.");
+                }
+
+                // 현재가 표시 업데이트
+                updateCurrentPriceDisplay(currentChartData);
+
+            } else {
+                 console.warn("chartInstance가 없어 실시간 업데이트를 표시할 수 없습니다.");
+            }
+
+        } else {
+            // API 응답 실패 또는 데이터 없음 (오류 로깅은 getJson2 내부 또는 여기서 처리)
+            // console.warn("실시간 캔들 데이터 수신 실패:", response.error || "응답 없음");
+        }
+    }).catch(error => {
+        // 네트워크 오류 등 getJson2 자체의 오류
+         console.error("실시간 캔들 요청 중 네트워크/스크립트 오류:", error);
+         // 폴링 중지 고려 (선택 사항)
+         // clearInterval(realtimePollingIntervalId);
+         // realtimePollingIntervalId = null;
+         // console.error("오류로 인해 실시간 폴링 중지됨.");
+    });
+}
+
+// 한국투자증권 api 실시간 데이터, 새 캔들 데이터를 기존 차트 데이터에 병합하는 함수
+function mergeRealtimeCandle(newCandle) {
+    if (!currentChartData || currentChartData.length === 0) {
+        currentChartData = [newCandle]; // 데이터가 없으면 그냥 추가
+        return;
+    }
+
+    const lastCandle = currentChartData[currentChartData.length - 1];
+
+    if (newCandle.x === lastCandle.x) {
+        // 시간이 같으면 마지막 캔들 업데이트 (시가는 유지, 고/저/종/거래량 업데이트)
+        // console.log(`실시간: 캔들 업데이트 (시간: ${new Date(newCandle.x).toLocaleTimeString()})`);
+        currentChartData[currentChartData.length - 1] = {
+            ...lastCandle, // 기존 값 복사 (시가 등 유지)
+            h: Math.max(lastCandle.h, newCandle.h), // 기존 고가와 새 고가 중 높은 값
+            l: Math.min(lastCandle.l, newCandle.l), // 기존 저가와 새 저가 중 낮은 값
+            c: newCandle.c,                         // 새 종가로 업데이트
+            v: (lastCandle.v || 0) + (newCandle.v || 0) // 거래량은 누적? API가 누적값을 주는지 확인 필요. 여기서는 새 값으로 가정. 만약 API가 해당 '분'의 누적량을 준다면 newCandle.v 사용
+            // v: newCandle.v // 만약 API가 해당 분의 '현재까지 누적 거래량'을 준다면 이렇게
+        };
+    } else if (newCandle.x > lastCandle.x) {
+        // 시간이 더 최신이면 새 캔들 추가
+        console.log(`실시간: 새 캔들 추가 (시간: ${new Date(newCandle.x).toLocaleTimeString()})`);
+        currentChartData.push(newCandle);
+        // (선택 사항) 차트 캔들 개수 제한 (예: 100개 유지)
+        const MAX_CANDLES = 100; // 원하는 최대 캔들 수
+        if (currentChartData.length > MAX_CANDLES) {
+            currentChartData.shift(); // 가장 오래된 캔들 제거
+        }
+    } else {
+        // 수신된 데이터가 마지막 캔들보다 과거 데이터인 경우 (네트워크 지연 등) - 무시
+         console.warn("수신된 실시간 데이터가 마지막 캔들보다 과거 데이터입니다. 무시합니다.", {last: lastCandle.x, new: newCandle.x});
+    }
+}
+
+// 한국투자증권 api 실시간 데이터, 현재가 표시 업데이트 로직 분리 (재사용 위해)
+function updateCurrentPriceDisplay(chartDataArray) {
+    const priceElement = document.getElementById('chart-price');
+    if (!priceElement) return;
+
+    if (chartDataArray && chartDataArray.length > 0) {
+        const lastClosePrice = chartDataArray[chartDataArray.length - 1].c;
+        if (typeof lastClosePrice === 'number' && !isNaN(lastClosePrice)) {
+             // 이전 가격과 비교하여 색상 변경 (선택 사항)
+             const previousPriceText = priceElement.textContent;
+             const previousPrice = parseFloat(previousPriceText);
+             priceElement.textContent = lastClosePrice.toFixed(4); // 소수점 처리
+
+             if (!isNaN(previousPrice)) {
+                 if (lastClosePrice > previousPrice) {
+                     priceElement.className = 'price-up'; // 상승 시 CSS 클래스
+                 } else if (lastClosePrice < previousPrice) {
+                     priceElement.className = 'price-down'; // 하락 시 CSS 클래스
+                 } else {
+                     // priceElement.className = 'price-neutral'; // 동일 시 CSS 클래스
+                 }
+             } else {
+                  // priceElement.className = 'price-neutral';
+             }
+
+        } else {
+            priceElement.textContent = '--.--';
+        }
+    } else {
+        priceElement.textContent = '--.--';
+    }
+}
+
+
+
+
+
+
+

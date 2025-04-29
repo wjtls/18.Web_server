@@ -187,7 +187,8 @@ def update_portfolio_api(request):
 
         # 3. 데이터 추출 (필요에 따라 유효성 검사 추가!)
         # 중요: 클라이언트 데이터를 그대로 신뢰하지 말고 검증하세요.
-        # 예를 들어, 포트폴리오 가치는 가능하면 서버 측에서 재계산하세요.
+        # 예를 들어, 포트폴리오 가치는 가능하면 서버 측에서 재계산
+
         cash = data.get('cash')
         holdings_data = data.get('holdings', {}) # 보유 종목 딕셔너리 가져오기
         trades_data = data.get('trades', [])     # 거래 내역 리스트 가져오기 (새 거래만 보낼 수도 있음)
@@ -212,45 +213,6 @@ def update_portfolio_api(request):
         if portfolio_value is not None:
              # 이상적으로는 서버에서 보유 종목과 현재가를 기반으로 재계산
              user.portfolio_value = portfolio_value # 'portfolio_value' 필드가 있다고 가정
-
-        # --- 보유 종목 처리 (예시 방법) ---
-
-        # 방법 A: User 모델에 'holdings_json'이라는 JSONField 사용
-        # user.holdings_json = holdings_data # 딕셔너리를 JSON으로 직접 저장
-
-        # 방법 B: 별도의 Holding 모델 사용
-        # 더 복잡한 로직 필요:
-        # - DB에서 해당 유저의 기존 보유 종목 가져오기.
-        # - 클라이언트의 holdings_data와 비교하기.
-        # - 새 Holding 객체 생성, 기존 객체 업데이트, 없어진 객체 삭제.
-        # 예시 (개념적 - Holding 모델 필요):
-        # existing_symbols = {h.symbol for h in user.holding_set.all()}
-        # current_symbols = set(holdings_data.keys())
-        # # 보유 종목 추가/업데이트
-        # for symbol, details in holdings_data.items():
-        #     Holding.objects.update_or_create(
-        #         user=user,
-        #         symbol=symbol,
-        #         defaults={'quantity': details.get('quantity'), 'avg_price': details.get('avgPrice')}
-        #     )
-        # # 더 이상 없는 보유 종목 삭제
-        # user.holding_set.filter(symbol__in=(existing_symbols - current_symbols)).delete()
-
-        # --- 거래 내역 처리 (예시 방법) ---
-        # 보통 클라이언트에서는 전체 리스트 대신 *새로운* 거래만 보냅니다.
-        # 만약 새로운 거래가 `data`에 포함되어 있다면:
-        # new_trade_info = data.get('new_trade') # 클라이언트가 새 거래 정보를 보낸다고 가정
-        # if new_trade_info:
-        #     Trade.objects.create(
-        #         user=user,
-        #         symbol=new_trade_info.get('symbol'),
-        #         trade_type=new_trade_info.get('type'), # 'buy' 또는 'sell'
-        #         quantity=new_trade_info.get('quantity'),
-        #         price=new_trade_info.get('price'),
-        #         timestamp=new_trade_info.get('timestamp') # 서버에서 설정하는 것이 이상적
-        #     )
-
-        # 5. 변경 사항 저장하기
         user.save()
 
         # 6. 성공 응답 반환하기
@@ -388,26 +350,32 @@ def get_kis_approval_key():
          return None
 
 
+@login_required # 로그인 사용자만 키 발급 가능하도록
+def get_websocket_key_api(request): # ★ 키 발급 전용 API 뷰 ★
+    """ KIS 웹소켓 접속 승인키를 발급하여 JSON으로 반환하는 API 뷰 """
+    print("[API] 웹소켓 승인키 발급 요청 받음 (/api/get_websocket_key/)")
+    approval_key = get_kis_approval_key() # 별도 파일의 함수 호출
 
-def web_socket_API(request): # 함수 이름은 실제 사용하는 이름으로 변경
-    print("index2_simulator_view 실행됨. 웹소켓 키 발급 시도...")
-    # 1. 뷰 함수 내부에서 키 발급 함수 호출
-    websocket_approval_key =  get_kis_approval_key() #웹소켓 API호출
+    if approval_key:
+        # 성공 시
+        print("[API] 웹소켓 승인키 발급 성공")
+        return JsonResponse({'success': True, 'approval_key': approval_key})
+    else:
+        # 실패 시
+        print("[API] 웹소켓 승인키 발급 실패")
+        return JsonResponse({'success': False, 'message': '웹소켓 승인키 발급에 실패했습니다.'}, status=500) # 500 서버 오류
 
-    if not websocket_approval_key:
-        print("!!! 웹소켓 키 발급 실패 !!!")
-        # 키 발급 실패 시 처리 (예: 에러 메시지 전달)
-        # websocket_approval_key = "" # 빈 값으로 설정
 
-    # 2. 템플릿에 전달할 context 데이터 생성
+@login_required # 시뮬레이터 페이지는 로그인 필수 가정
+def index2_simulator_page(request): # ★ 시뮬레이터 HTML 페이지 렌더링 전용 뷰 ★
+    """ 시뮬레이터 HTML 페이지만 렌더링하는 뷰 """
+    print("시뮬레이터 페이지 요청 받음 (/index2_simulator/)")
     context = {
         'user': request.user,
-        # ★ 발급받은 키(또는 빈 문자열)를 컨텍스트에 추가
-        'websocket_approval_key': websocket_approval_key or "",
-        # ... 다른 필요한 데이터 추가 ...
+        # ★★★ 여기서는 websocket_approval_key 를 전달하지 않습니다 ★★★
     }
+    # 템플릿 파일 경로는 실제 프로젝트 구조에 맞게 확인 필요
     return render(request, 'main/index2_simulator.html', context)
-
 
 
 
@@ -741,6 +709,34 @@ def initiate_withdrawal_api_view(request):
 
 
 
+
+
+""" 프로필 설정 페이지를 보여주는 뷰 (GET 요청 처리) """
+@login_required # 로그인 필수
+def profile_settings_view(request):
+
+    # TODO: 여기에 POST 요청 처리 로직 추가 필요 (폼 제출 시)
+    # if request.method == 'POST':
+    #     # 폼 종류(nickname, contact, wallet, sharing) 구분
+    #     form_type = request.POST.get('form_type')
+    #     if form_type == 'nickname':
+    #         # 닉네임 변경 처리 (쿨타임 확인, 유효성 검사, DB 저장)
+    #         pass
+    #     elif form_type == 'sharing':
+    #         # 포지션 공유 설정 처리
+    #         pass
+    #     elif form_type == 'contact' or form_type == 'wallet':
+    #         # 인증 절차 시작 (이메일 발송, SMS 발송 등 - 별도 구현 필요)
+    #         messages.info(request, "인증 절차 구현이 필요합니다.")
+    #         pass
+    #     # 처리 후 현재 페이지로 다시 리다이렉트 (메시지 포함)
+    #     return redirect('profile_settings')
+
+    # GET 요청 시 현재 사용자 정보 전달
+    context = {
+        'user': request.user
+    }
+    return render(request, 'main/user_profile_setting.html', context)
 
 
 

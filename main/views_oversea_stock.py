@@ -181,6 +181,72 @@ def oversea_stock_price(request,id):
     return HttpResponse(r)
 
 
+
+
+
+
+
+
+# Django views.py 예시
+import sys
+from django.http import JsonResponse
+from django.conf import settings
+
+target_path = r"D:\AI_pycharm\pythonProject\3_AI_LLM_finance\a_korea_invest_api_env"
+if target_path not in sys.path:
+     sys.path.append(target_path)
+# --------------------------------------------------------------------
+import get_ovsstk_chart_price # 실제 스크립트 파일 이름
+
+def get_realtime_candle_data(request, market, symbol):
+    """최신 1분봉 캔들 데이터 1개를 반환하는 API 뷰"""
+    try:
+        access_token, access_token_expired = get_ovsstk_chart_price.get_access_token()  # 토큰 갱신
+        latest_candle_data_list = get_ovsstk_chart_price.fetch_and_save_data(
+            market, symbol, 1, 50, access_token # 분봉 '1', 개수 '1'
+        )
+
+        if latest_candle_data_list and isinstance(latest_candle_data_list, list) and len(latest_candle_data_list) > 0:
+            # 가장 최신 데이터 (리스트의 마지막 요소일 수 있음, 혹은 첫 요소 - 함수 구현 확인)
+            latest_candle = latest_candle_data_list[-1] # 마지막 요소 가정
+
+            # 필요한 데이터만 포함하여 반환 (JavaScript에서 사용할 형식과 유사하게)
+            response_data = {
+                'success': True,
+                'data': {
+                    'localDate': latest_candle.get('localDate'),
+                    'openPrice': latest_candle.get('openPrice'),
+                    'highPrice': latest_candle.get('highPrice'),
+                    'lowPrice': latest_candle.get('lowPrice'),
+                    'closePrice': latest_candle.get('closePrice'),
+                    'volume': latest_candle.get('volume')
+                }
+            }
+            return JsonResponse(response_data)
+        else:
+            # 데이터가 없거나 형식이 잘못된 경우
+            return JsonResponse({'success': False, 'error': 'No data received or invalid format'}, status=404)
+
+    except ImportError as e:
+         print(f"Import Error: {e}") # 서버 로그에 출력
+         return JsonResponse({'success': False,'error': f'Server configuration error: {e}'}, status=500)
+    except Exception as e:
+        print(f"Error fetching realtime candle: {e}") # 서버 로그에 출력
+        # 실제 운영 시에는 더 상세한 오류 로깅 및 처리 필요
+        return JsonResponse({'success': False, 'error': f'An error occurred: {e}'}, status=500)
+
+
+
+
+
+
+
+
+
+
+
+
+
 def total_time_Frame(data, minute,col_name):  # all data 분봉 출력( traning O  , real backtest x , real trading x)
 
     # 분봉출력: 실시간 시뮬레이터, 학습 = data count 만큼(또는 전체) 를 뽑아서 연산

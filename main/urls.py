@@ -21,10 +21,11 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 
 urlpatterns = [
     #웹 요소들
+    path('profile/settings/', views_main.profile_settings_view, name='profile_settings'), #유저프로필 설정시 호출
     path('api/trade/process_result/', views_main.process_trade_result_api_view, name='process_trade_result_api'), # 이전 단계에서 추가한 API
     path('api/shop/purchase/', views_main.purchase_item_api_view, name='purchase_item_api'),       # 상점 API
     path('api/wallet/withdraw/', views_main.initiate_withdrawal_api_view, name='initiate_withdrawal_api'), # 출금 API 경로 추가
-    path('index2/', views_main.web_socket_API, name='web_socket_API'),#웹소켓 api호출, index2 요청이 오면바로 실행
+    path('api/get_websocket_key/', views_main.get_websocket_key_api, name='get_websocket_key_api'),#웹소켓 api호출,
     path('api/update_portfolio/', views_main.update_portfolio_api, name='update_portfolio_api'), #포폴 DB에 업데이트
     path('accounts/profile/', views_main.profile, name='profile'),
     path('base/', auth_views.LoginView.as_view(template_name='main/base'), name='base'),
@@ -40,6 +41,7 @@ urlpatterns = [
     path("basic/<str:id>", views_korea_stock.korea_stock_basic, name="korea_stock_basic"),
 
     #데이터
+    path('api/realtime_candle/<str:market>/<str:symbol>/', views_oversea_stock.get_realtime_candle_data, name='realtime_candle'), #한투 api
     path("oversea_news/", views_oversea_stock.oversea_news, name="oversea_stock_ask"),
     path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_oversea_stock.oversea_api, name="oversea_stock_ask"),
     path("oversea_ask/<str:id>/", views_oversea_stock.oversea_stock_price,name="oversea_stock_price"),

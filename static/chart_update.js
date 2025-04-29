@@ -163,81 +163,123 @@ function loadAndStartPolling() {
 
 //웹소켓 메세지 처리
 function handleWebSocketMessage(event) {
-    // console.log("Raw WS Data:", event.data); // 원시 데이터 확인용
+    // 1. 모든 수신 메시지 로깅 (디버깅에 매우 중요)
+    const receivedData = event.data;
 
-    // PONG 메시지 처리 (API가 PING/PONG 요구 시 필요)
-    if (event.data === 'PONG') {
-        console.log('PONG received');
-        // 필요한 PONG 처리 로직
-        return;
+    // 2. PING/PONG 처리 (KIS 문서 재확인 필요)
+    if (receivedData === 'PING') {
+        try { ws.send('PONG'); } catch(e){ console.error("PONG 전송 오류:", e); }
+        return; // PING/PONG 메시지 처리 후 함수 종료
     }
-    // PING 메시지 처리
-    if (event.data === 'PING') {
-        console.log('PING received, sending PONG');
-        ws.send('PONG');
-        return;
+    if (receivedData === 'PONG') {
+        return; // PING/PONG 메시지 처리 후 함수 종료
     }
 
-    // 실제 데이터 처리 (데이터 형식 확인 필요 - JSON 응답 또는 ^ 구분 문자열)
-    // KIS API는 보통 ^ 구분 문자열 또는 JSON 형식의 응답(오류 등)을 보냄
-    if (typeof event.data === 'string' && event.data.includes('^')) {
-        // ^ 구분자 데이터 처리
-        const fields = event.data.split('^');
-        // console.log("Parsed Fields:", fields); // 필드 확인용
+    // 3. 문자열 데이터 처리 시도
+    if (typeof receivedData === 'string') {
 
-        // ----- ★★★ 필드 인덱스 확인 필수 ★★★ -----
-        // 문서의 Response Body 순서대로 인덱스를 정확히 확인해야 합니다.
-        // 아래는 *가정*입니다. (실제와 다를 수 있음!)
-        const msgType = fields[0]; // 0: 실시간 체결, 1: 실시간 호가 등 (문서 확인 필요)
-        const receivedSymbol = fields[1]; // SYMB (종목코드)
-        const lastPriceStr = fields[7];   // LAST (현재가)
-        const koreaTimeStr = fields[6];   // KHMS (한국시간)
-        // -------------------------------------------
+        // 3-1. ^ 구분자 실시간 데이터 처리 ('0' 또는 '1'로 시작 가정)
+        if (receivedData.includes('^') && (receivedData.startsWith('0|') || receivedData.startsWith('1|'))) {
+            const fields = receivedData.split('^');
 
-        // 수신 데이터가 현재 보고 있는 종목과 일치하고, 차트 데이터가 있을 때
-        if (msgType === '0' && receivedSymbol === currentSymbol && chartInstance && currentChartData.length > 0) {
-            const newPrice = parseFloat(lastPriceStr);
-            if (isNaN(newPrice)) {
-                console.warn("수신된 가격 데이터가 유효하지 않음:", lastPriceStr);
-                return;
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            // ★★★ KIS 공식 문서에서 HDFSCNT0 '응답(Response)' 명세 확인 필수! ★★★
+            // ★★★ 아래 fields 배열의 인덱스 번호는 *매우 부정확한 가정*입니다! ★★★
+            // ★★★ 문서 보고 반드시! 실제 응답 필드 순서에 맞게 수정하세요! ★★★
+            // ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+            const msgType = fields[0];        // 예: '0' (체결) <- 문서 확인!
+            const tr_id = fields[1];          // 예: 'HDFSCNT0' <- 문서 확인!
+            const receivedTrKey = fields[2];  // 예: 'DNASAAPL' <- tr_key가 여기 오는지 확인!
+            const lastPriceStr = fields[7];   // 예: 현재가? <- ★★인덱스 확인 필수★★
+            const execTime = fields[6];       // 예: 시간? <- ★★인덱스 확인 필수★★
+
+
+            // 종목 코드 추출 (tr_key 형식에 따라 조정 필요)
+            let symbolFromKey = receivedTrKey;
+            if (receivedTrKey && receivedTrKey.length > 4 && (receivedTrKey.startsWith('D') || receivedTrKey.startsWith('R'))) {
+                 symbolFromKey = receivedTrKey.substring(4); // 앞 4자리 제거 (예: DNAS + AAPL -> AAPL)
+            } else if (receivedTrKey && receivedTrKey.length > 3 && (receivedTrKey.startsWith('D') || receivedTrKey.startsWith('R'))) {
+                 // 혹시 시장코드가 3자리일 경우 대비 (HDFSCNT0 문서 확인 필요)
+                 symbolFromKey = receivedTrKey.substring(4);
+                 // 또는 symbolFromKey = receivedTrKey.substring(3); ?? -> 문서 확인!
+            } else {
             }
 
-            const lastCandle = currentChartData[currentChartData.length - 1];
+            // 해외주식 실시간 현재가(HDFSCNT0)의 체결 데이터(msgType='0') 처리 (가정)
+            if (tr_id === "HDFSCNT0" && msgType === '0') {
+                if (symbolFromKey === currentSymbol) { // 현재 보고 있는 종목 데이터만 처리
+                    const newPrice = parseFloat(lastPriceStr);
+                    if (!isNaN(newPrice)) {
+                        // --- ▼▼▼ 실시간 가격 저장소 업데이트 ▼▼▼ ---
+                        currentPrices[symbolFromKey] = newPrice; // ★★★ 여기! ★★★
+                        console.log(`   [Price Stored] currentPrices['${symbolFromKey}'] = ${newPrice}`);
+                        // --- ▲▲▲ 업데이트 완료 ▲▲▲ ---
 
-            // 마지막 캔들 업데이트
-            lastCandle.c = newPrice; // 종가
-            lastCandle.h = Math.max(lastCandle.h, newPrice); // 고가
-            lastCandle.l = Math.min(lastCandle.l, newPrice); // 저가
+                        // 현재 차트에 표시 중인 종목이면 차트/화면 즉시 업데이트
+                        if (symbolFromKey === currentSymbol) {
+                            console.log(`   [Live Update] ${symbolFromKey} Price: ${newPrice}`);
+                            // 차트 업데이트
+                            if (chartInstance && typeof updateLastCandleOnChart === 'function' && currentChartData?.length > 0) {
+                                const lastCandle = currentChartData[currentChartData.length - 1];
+                                lastCandle.c = newPrice;
+                                lastCandle.h = Math.max(lastCandle.h, newPrice);
+                                lastCandle.l = Math.min(lastCandle.l, newPrice);
+                                updateLastCandleOnChart(lastCandle);
+                            }
+                            // 화면 현재가 업데이트
+                            if (typeof updatePriceDisplay === 'function') { updatePriceDisplay(newPrice); }
+                            else { const pe = document.getElementById('chart-price'); if(pe) pe.textContent = newPrice.toFixed(4); }
+                        }
 
-            // 차트 라이브러리 업데이트 함수 호출
-            updateLastCandleOnChart(lastCandle);
+                        // ★★★ 포트폴리오 디스플레이 업데이트 호출 ★★★
+                        // (실시간 데이터 올 때마다 호출 -> 성능 영향 고려 필요)
+                        if (typeof updatePortfolioDisplay === 'function') {
+                            updatePortfolioDisplay();
+                        }
 
-            // (선택) 현재가 표시 업데이트
-            const priceElement = document.getElementById('chart-price');
-            if (priceElement) priceElement.textContent = newPrice.toFixed(2); // 소수점 처리 필요
+                    } else { console.warn(`   [Data] Invalid price string received: ${lastPriceStr}`); }
+                } else { console.log(`   [Data] Received data for a different symbol: ${symbolFromKey}`); }
+            } else { console.log(`   [Data] Received caret-separated data, but not HDFSCNT0 type 0.`); }
 
-        } else if (msgType === '0') {
-             // console.log(`다른 종목(${receivedSymbol}) 데이터 수신 or 차트 준비 안됨`);
-        } else {
-             //console.log("체결 데이터(type 0)가 아닌 메시지 수신:", msgType);
-        }
+        } else if (receivedData.startsWith('{')) { // 3-2. JSON 형식 응답 처리
+            console.log("   [Type] JSON-like string received.");
+            try {
+                const jsonData = JSON.parse(receivedData);
+                console.log("   [JSON Parsed]:", jsonData);
 
-    }
-    else if (typeof event.data === 'string') {
-        // JSON 형태의 응답 처리 (예: 구독 성공/실패 메시지)
-        try {
-            const jsonData = JSON.parse(event.data);
-            console.log("JSON 응답 수신:", jsonData);
-            if (jsonData.header?.tr_id === 'HDFSCNT0' && jsonData.body?.rt_cd === '0') {
-                 console.log(`구독 성공: ${jsonData.header.tr_key}`);
-                 isSubscribed = true; // 구독 성공 시 상태 변경
-            } else if (jsonData.body?.rt_cd !== '0') {
-                 console.error(`구독/해제 실패: ${jsonData.body?.msg1}`);
-                 isSubscribed = false;
+                const rtCd = jsonData.body?.rt_cd;
+                const msg1 = jsonData.body?.msg1 || "";
+                const resTrId = jsonData.header?.tr_id;
+                const resTrKey = jsonData.header?.tr_key;
+
+                // 구독/해제 응답 처리 (HDFSCNT0 또는 H0STCNT0 등)
+                if (resTrId === 'HDFSCNT0' || resTrId === 'H0STCNT0') { // 관련 TR ID 확인
+                    if (rtCd === '0' || rtCd === '1') { // 성공 또는 준성공(이미 구독 등)
+                         if (msg1.includes('ALREADY')) { // 이미 구독 중 메시지 포함 시
+                         } else {
+                         }
+                         // 현재 구독된 정보와 일치하면 isSubscribed = true
+                         if(resTrKey === `D${currentExchange}${currentSymbol}`) { // 현재 요청 키와 일치 확인
+                            isSubscribed = true;
+                         }
+                    } else { // 실패 응답
+                         console.error(`   [JSON Result] Subscription Failed: ${msg1} (msg_cd: ${jsonData.body?.msg_cd}, rt_cd: ${rtCd})`);
+                         // 실패 시 구독 상태 false로 명확히
+                         if(resTrKey === `D${currentExchange}${currentSymbol}`) {
+                            isSubscribed = false;
+                         }
+                    }
+                } else { /* 기타 TR_ID JSON 처리 */ }
+
+            } catch (e) {
+                console.error("   [JSON Error] Failed to parse received string as JSON:", e);
+                console.warn("   Received string was:", receivedData);
             }
-        } catch(e) {
-            // console.warn("JSON 파싱 불가 메시지 수신:", event.data);
+        } else { // 3-3. 기타 알 수 없는 문자열
+            console.warn("   [Type] Unknown string format received.");
         }
+    } else { // 4. 문자열 외 데이터 타입 (거의 없음)
+        console.warn("[WebSocket] Received non-string data:", typeof receivedData, receivedData);
     }
 }
 
@@ -259,3 +301,4 @@ function updateLastCandleOnChart(lastCandleData) {
         // console.warn("차트 인스턴스 또는 데이터셋이 준비되지 않아 업데이트 불가");
     }
 }
+
