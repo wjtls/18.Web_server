@@ -352,21 +352,7 @@ function updateSliderValue(value) {
     const sliderValueElement = document.getElementById('sliderValue');
     if(sliderValueElement) sliderValueElement.textContent = value;
 }
-function updateQuantityValue(value) {
-    const quantityValueElement = document.getElementById('quantity_value');
-    if(quantityValueElement) quantityValueElement.textContent = value;
-}
-function getSliderValue() {
-     const slider = document.getElementById('simulatorSlider');
-     return slider ? slider.value : '100'; // 기본값 반환
-}
 
-
-function updateSliderValue(value) {
-            const element = document.getElementById('sliderValue');
-            if (element) element.textContent = value;
-            // Potentially trigger chart load here if needed: loadUnit(currentUnit, value);
-        }
 function updateQuantityValue(value) {
     const element = document.getElementById('quantity_value');
     if (element) element.textContent = value;

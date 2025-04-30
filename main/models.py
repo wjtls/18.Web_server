@@ -16,49 +16,6 @@ class AccessToken(models.Model): #DB저장 모델
 from django.db import models
 from django.contrib.auth.models import AbstractUser, Group, Permission # Group, Permission 모델도 import
 from django.utils.translation import gettext_lazy as _ # 다국어 지원을 위한 verbose_name 등에서 사용될 수 있음
-'''
-class User(AbstractUser):
-    # --- 기존 추가 필드들 ---
-    cash = models.FloatField(default=1000000.0)
-    symbol = models.CharField(max_length=10, null=True, blank=True)
-    stock_count = models.IntegerField(default=0)
-    portfolio_value = models.FloatField(default=1000000.0)
-    level = models.IntegerField(default=1)
-    user_tier = models.CharField(max_length=50, default="Bronze")
-    real_cash = models.FloatField(default=0)
-    # otp_secret = models.CharField(max_length=16, unique=True, null=True, blank=True) # 2FA 사용 시
-    # is_2fa_enabled = models.BooleanField(default=False) # 2FA 사용 시
-
-    # --- related_name 충돌 해결 ---
-    # groups 필드를 재정의하며 고유한 related_name 추가
-    groups = models.ManyToManyField(
-        Group,
-        verbose_name=_('groups'),
-        blank=True,
-        help_text=_(
-            'The groups this user belongs to. A user will get all permissions '
-            'granted to each of their groups.'
-        ),
-        # ↓↓↓ 고유한 related_name 설정 ↓↓↓
-        related_name="main_user_groups",
-        related_query_name="user",
-    )
-
-    # user_permissions 필드를 재정의하며 고유한 related_name 추가
-    user_permissions = models.ManyToManyField(
-        Permission,
-        verbose_name=_('user permissions'),
-        blank=True,
-        help_text=_('Specific permissions for this user.'),
-        # ↓↓↓ 고유한 related_name 설정 ↓↓↓
-        related_name="main_user_permissions",
-        related_query_name="user",
-    )
-
-    def __str__(self):
-        return self.username
-    
-'''
 
 # models.py
 from django.db import models, transaction
@@ -91,8 +48,6 @@ TIER_THRESHOLDS = [
 class User(AbstractUser):
     # --- 기본 및 기존 필드 ---
     cash = models.FloatField(default=1000000.0)
-    symbol = models.CharField(max_length=10, null=True, blank=True)
-    stock_count = models.IntegerField(default=0)
     portfolio_value = models.FloatField(default=1000000.0)
     # level 필드는 이제 계산된 프로퍼티를 사용하므로, 직접 관리하지 않을 수 있음
     # level = models.IntegerField(default=1) # 필요하다면 유지 또는 @property로 대체
@@ -364,9 +319,53 @@ class User(AbstractUser):
 
 
 
+from django.db import models
+from django.conf import settings # settings.AUTH_USER_MODEL 사용 위해
 
 
+class Holding(models.Model):
+    """사용자의 개별 보유 종목 정보를 저장하는 모델"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, # User 모델과 연결 (settings 사용하는 것이 좋음)
+        on_delete=models.CASCADE, # 사용자가 삭제되면 보유 종목도 삭제
+        related_name='holdings'   # User 객체에서 .holdings 로 접근 가능하게 함
+    )
+    symbol = models.CharField(max_length=20, db_index=True) # 종목 심볼 (예: TQQQ, AAPL), 인덱스 추가 권장
+    quantity = models.IntegerField(default=0)               # 보유 수량
+    avg_price = models.FloatField(default=0.0)              # 평균 매수 단가
 
+    class Meta:
+        unique_together = ('user', 'symbol') # 한 사용자는 같은 종목을 하나만 보유 (중복 방지)
+        verbose_name = "보유 종목"
+        verbose_name_plural = "보유 종목 목록"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.symbol}: {self.quantity} @ {self.avg_price}"
+
+    @property
+    def current_value(self):
+        # 실시간 현재가를 가져오는 로직 필요 (별도 함수 또는 서비스 연동)
+        # 여기서는 임시로 avg_price 사용
+        # current_price = get_current_price(self.symbol) # 이런 함수가 있다고 가정
+        # return self.quantity * current_price
+        return self.quantity * self.avg_price # 임시 계산
+
+    @property
+    def purchase_value(self):
+        """총 매수 금액"""
+        return self.quantity * self.avg_price
+
+    @property
+    def profit_loss(self):
+        """평가 손익"""
+        return self.current_value - self.purchase_value
+
+    @property
+    def return_percentage(self):
+        """수익률"""
+        if self.purchase_value == 0:
+            return 0.0
+        return (self.profit_loss / self.purchase_value) * 100
 
 
 

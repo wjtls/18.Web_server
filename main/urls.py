@@ -1,4 +1,6 @@
-from django.urls import path
+
+from django.urls import path, include
+from django.contrib import admin
 
 from django.views.generic import RedirectView #배포
 
@@ -6,6 +8,7 @@ from . import views_korea_stock
 from . import views_main
 from . import views_oversea_stock
 from . import views_AI
+
 # Django 내장 LoginView와 LogoutView 임포트
 from django.contrib.auth import views as auth_views
 '''
@@ -40,8 +43,13 @@ urlpatterns = [
     path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list"),
     path("basic/<str:id>", views_korea_stock.korea_stock_basic, name="korea_stock_basic"),
 
+
+    # 게시판 URL 추가 (예: '/board/' 경로 사용)
+    path('board/', include('board.urls')), # board 앱의 urls.py 연결
+
+
     #데이터
-    path('api/realtime_candle/<str:market>/<str:symbol>/', views_oversea_stock.get_realtime_candle_data, name='realtime_candle'), #한투 api
+    path('api/realtime_candle/<str:market>/<str:interval>/<str:symbol>/', views_oversea_stock.get_realtime_candle_data, name='realtime_candle'),
     path("oversea_news/", views_oversea_stock.oversea_news, name="oversea_stock_ask"),
     path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_oversea_stock.oversea_api, name="oversea_stock_ask"),
     path("oversea_ask/<str:id>/", views_oversea_stock.oversea_stock_price,name="oversea_stock_price"),

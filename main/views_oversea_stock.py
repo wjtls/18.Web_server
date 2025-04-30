@@ -184,9 +184,6 @@ def oversea_stock_price(request,id):
 
 
 
-
-
-
 # Django views.py 예시
 import sys
 from django.http import JsonResponse
@@ -198,42 +195,58 @@ if target_path not in sys.path:
 # --------------------------------------------------------------------
 import get_ovsstk_chart_price # 실제 스크립트 파일 이름
 
-def get_realtime_candle_data(request, market, symbol):
+def get_realtime_candle_data(request, market, interval, symbol):
     """최신 1분봉 캔들 데이터 1개를 반환하는 API 뷰"""
-    try:
+
+    # ★★ 캐시 키: 함수 이름 + 모든 파라미터 조합 ★★
+    cache_key = f"get_realtime_candle_data_{market}_{interval}_{symbol}"
+    cached_data = cache.get(cache_key)
+
+    if cached_data:
+        print(f"Cache hit for {cache_key}")
+        return JsonResponse(cached_data)  # 캐시된 JSON 응답 반환
+    else:
         access_token, access_token_expired = get_ovsstk_chart_price.get_access_token()  # 토큰 갱신
         latest_candle_data_list = get_ovsstk_chart_price.fetch_and_save_data(
-            market, symbol, 1, 50, access_token # 분봉 '1', 개수 '1'
+            market, symbol, interval, 50, access_token # 분봉 '1', 개수 '1'
         )
+        print(latest_candle_data_list,'fkasnfklsa')
+        if candle_data_list and isinstance(candle_data_list, list) and len(candle_data_list) > 0:
 
-        if latest_candle_data_list and isinstance(latest_candle_data_list, list) and len(latest_candle_data_list) > 0:
-            # 가장 최신 데이터 (리스트의 마지막 요소일 수 있음, 혹은 첫 요소 - 함수 구현 확인)
-            latest_candle = latest_candle_data_list[-1] # 마지막 요소 가정
+            # --- JavaScript에서 사용할 형태로 전체 리스트 변환 ---
+            # ★★ API 실제 응답 키 이름 확인 필수! ★★
+            formatted_data = []
+            for item in candle_data_list:
+                if item.get('datetime') and item.get('last') is not None:
+                    formatted_data.append({
+                        'localDate': item.get('datetime'),  # JS에서 사용할 키: API 응답 키
+                        'openPrice': item.get('open'),
+                        'highPrice': item.get('high'),
+                        'lowPrice': item.get('low'),
+                        'closePrice': item.get('last'),
+                        'volume': item.get('evol')
+                    })
+                else:
+                    print(f"Warning: Skipping invalid item in API response: {item}")
 
-            # 필요한 데이터만 포함하여 반환 (JavaScript에서 사용할 형식과 유사하게)
+            if not formatted_data:
+                print(f"No valid candle data found in API response for {market}/{symbol}/{interval}")
+                return JsonResponse({'success': False, 'error': 'No valid candle data found in API response'}, status=404)
+
+            # --- 응답 데이터 구성 (300개 데이터 리스트) ---
             response_data = {
                 'success': True,
-                'data': {
-                    'localDate': latest_candle.get('localDate'),
-                    'openPrice': latest_candle.get('openPrice'),
-                    'highPrice': latest_candle.get('highPrice'),
-                    'lowPrice': latest_candle.get('lowPrice'),
-                    'closePrice': latest_candle.get('closePrice'),
-                    'volume': latest_candle.get('volume')
-                }
+                'data': formatted_data  # <<<--- 전체 리스트 반환
             }
+            # --- 캐시에 저장 (예: 5초 유효) ---
+            cache.set(cache_key, response_data, timeout=5)
+            # -----------------------------------
+            print(f"{len(formatted_data)} candles fetched from API and cached for {cache_key}")
             return JsonResponse(response_data)
         else:
-            # 데이터가 없거나 형식이 잘못된 경우
-            return JsonResponse({'success': False, 'error': 'No data received or invalid format'}, status=404)
-
-    except ImportError as e:
-         print(f"Import Error: {e}") # 서버 로그에 출력
-         return JsonResponse({'success': False,'error': f'Server configuration error: {e}'}, status=500)
-    except Exception as e:
-        print(f"Error fetching realtime candle: {e}") # 서버 로그에 출력
-        # 실제 운영 시에는 더 상세한 오류 로깅 및 처리 필요
-        return JsonResponse({'success': False, 'error': f'An error occurred: {e}'}, status=500)
+            print(f"No data list received from API for {market}/{symbol}/{interval} ({num_candles_to_fetch} request)")
+            return JsonResponse({'success': False, 'error': f'No data list received from API ({num_candles_to_fetch} request)'},
+                                status=404)
 
 
 

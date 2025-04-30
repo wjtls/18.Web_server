@@ -11,11 +11,38 @@ from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from .models import StrategyPageSubscription # 모델 import
 
+#Holding/Trade 모델이 별도로 있다면 임포트
+from .models import Holding
+
 def index(request):
     return render(request,"main/index_homepage.html")
 
-def index2_simulator(request):
+def index2_simulator_backup(request):
     return render(request,"main/index2_simulator.html")
+
+def index2_simulator(request):
+    user = request.user
+
+    try:
+        # JavaScript용 딕셔너리 생성
+        holdings_qs = user.holdings.all()
+        holdings_dict_for_js = {}
+        for holding in holdings_qs:
+            holdings_dict_for_js[holding.symbol] = {
+                'quantity': holding.quantity, # 모델 필드 이름 확인! (quantity or stock_count)
+                'avgPrice': holding.avg_price,
+                'symbol': holding.symbol
+            }
+
+        context = {
+            'user': user,
+            # 생성된 딕셔너리를 JSON 문자열로 변환하여 전달
+            'holdings_json_for_js': json.dumps(holdings_dict_for_js)
+        }
+    except:
+        context={'user': user}
+
+    return render(request, 'main/index2_simulator.html', context)
 
 def index3_strategy(request):
     return render(request,"main/index3_strategy.html")
@@ -155,9 +182,6 @@ from django.contrib.auth.decorators import login_required # 로그인된 사용�
 from django.views.decorators.csrf import csrf_exempt # 주의해서 사용하거나 클라이언트에서 CSRF 처리 필요
 from django.contrib.auth import get_user_model # 또는 사용자 정의 User 모델 경로
 
-# Holding/Trade 모델이 별도로 있다면 임포트
-# from .models import Holding, Trade
-
 User = get_user_model() # 현재 활성화된 User 모델 가져오기
 
 @login_required # 로그인 필수 데코레이터
@@ -168,62 +192,165 @@ User = get_user_model() # 현재 활성화된 User 모델 가져오기
 
 def update_portfolio_api(request):
     """
-    클라이언트로부터 포트폴리오 업데이트를 수신하여
-    데이터베이스에 저장하는 API 엔드포인트.
+    클라이언트로부터 포트폴리오 전체 상태를 수신하여
+    데이터베이스에 저장(동기화)하는 API 엔드포인트.
     """
     try:
-        # 1. 로그인된 사용자 가져오기
+        # 1. 현재 로그인된 사용자 객체 가져오기
         user = request.user
 
         # 2. 클라이언트에서 보낸 JSON 데이터 파싱하기
-        # 요청 본문이 비어있지 않은지 확인
         if not request.body:
+            print(f"오류: 사용자 {user.username} 요청 본문 비어있음.")
             return JsonResponse({'status': 'error', 'message': '요청 본문이 비어있습니다.'}, status=400)
 
         try:
-            data = json.loads(request.body)
+            # 요청 본문을 UTF-8로 디코딩 시도 (일반적)
+            data = json.loads(request.body.decode('utf-8'))
+            print(f"로그: 사용자 {user.username} 포트폴리오 데이터 수신: {data}") # 디버깅: 수신 데이터 확인
         except json.JSONDecodeError:
+            print(f"오류: 사용자 {user.username} 잘못된 JSON 수신: {request.body[:200]}...") # 앞부분만 로깅
             return JsonResponse({'status': 'error', 'message': '잘못된 JSON 형식입니다.'}, status=400)
+        except UnicodeDecodeError:
+             print(f"오류: 사용자 {user.username} 요청 본문 디코딩 실패.")
+             return JsonResponse({'status': 'error', 'message': '요청 인코딩 오류입니다.'}, status=400)
 
-        # 3. 데이터 추출 (필요에 따라 유효성 검사 추가!)
-        # 중요: 클라이언트 데이터를 그대로 신뢰하지 말고 검증하세요.
-        # 예를 들어, 포트폴리오 가치는 가능하면 서버 측에서 재계산
 
-        cash = data.get('cash')
-        holdings_data = data.get('holdings', {}) # 보유 종목 딕셔너리 가져오기
-        trades_data = data.get('trades', [])     # 거래 내역 리스트 가져오기 (새 거래만 보낼 수도 있음)
-        level = data.get('level')
-        user_tier = data.get('tier')
-        real_cash = data.get('realCash')
-        portfolio_value = data.get('portfolioValue') # 서버에서 재계산 고려
+        # 3. 데이터 추출 및 기본 유효성 검사 (필요시 강화)
+        # 클라이언트 데이터를 직접 신뢰하는 것은 보안상 위험할 수 있습니다.
+        # 서버에서 재계산 가능한 값(예: portfolio_value)은 가능하면 서버에서 계산하는 것이 좋습니다.
 
-        # 4. 데이터베이스의 User 객체 업데이트하기
-        # 기본 필드
-        if cash is not None:
-             # 유효성 검사 추가: cash가 유효한 숫자인지, 서버 로직과 맞는지 등 확인
-            user.cash = cash
-        if level is not None:
-            user.level = level # user 모델에 'level' 필드가 있다고 가정
-        if user_tier is not None:
-            user.user_tier = user_tier # 'user_tier' 필드가 있다고 가정
-        if real_cash is not None:
-             # real_cash는 서버에서 엄격하게 관리하는 것이 좋음
-             # user.real_cash = real_cash # 'real_cash' 필드가 있다고 가정
-             pass # 또는 클라이언트 입력 대신 서버 로직 기반으로 업데이트
-        if portfolio_value is not None:
-             # 이상적으로는 서버에서 보유 종목과 현재가를 기반으로 재계산
-             user.portfolio_value = portfolio_value # 'portfolio_value' 필드가 있다고 가정
-        user.save()
+        cash = data.get('cash') # get() 사용으로 키 부재 시 None 반환
+        holdings_data = data.get('holdings', {}) # 기본값 빈 딕셔너리
+        trades_data = data.get('trades', [])     # 기본값 빈 리스트
+        # level = data.get('level') # User 모델에 level 필드가 있다면
+        user_tier = data.get('tier') # User 모델에 user_tier 필드가 있다면
+        # real_cash = data.get('realCash') # 서버에서 관리 권장
+        portfolio_value_client = data.get('portfolioValue') # 클라이언트가 계산한 값
 
-        # 6. 성공 응답 반환하기
+        # 4. 데이터베이스 업데이트 (원자적 트랜잭션 사용)
+        try:
+            with transaction.atomic():
+                # 4.1 User 객체 잠금 및 업데이트 (동시성 문제 방지)
+                user_locked = User.objects.select_for_update().get(pk=user.pk)
+
+                update_fields_user = [] # User 모델 업데이트 필드 추적
+
+                # 현금 업데이트 (숫자인지, 음수 아닌지 등 검증 추가 가능)
+                if cash is not None and isinstance(cash, (int, float)):
+                    user_locked.cash = cash
+                    update_fields_user.append('cash')
+                # else: # 값이 없거나 타입이 안맞으면 로깅 또는 에러 처리
+                #     print(f"경고: 사용자 {user.username}의 cash 값이 유효하지 않음: {cash}")
+
+                # 티어 업데이트 (문자열인지, 유효한 값인지 검증 추가 가능)
+                if user_tier is not None and isinstance(user_tier, str):
+                    user_locked.user_tier = user_tier # user_tier 필드 존재 가정
+                    update_fields_user.append('user_tier')
+
+                # Level 업데이트 (User 모델에 level 필드가 있다면)
+                # if level is not None and isinstance(level, int):
+                #     user_locked.level = level
+                #     update_fields_user.append('level')
+
+                # 포트폴리오 가치 (클라이언트 값 저장 vs 서버 재계산)
+                # 여기서는 일단 클라이언트 값 저장, 추후 서버 재계산 로직 추가 권장
+                if portfolio_value_client is not None and isinstance(portfolio_value_client, (int, float)):
+                     user_locked.portfolio_value = portfolio_value_client # portfolio_value 필드 존재 가정
+                     update_fields_user.append('portfolio_value')
+
+                # User 모델 필드 변경사항 저장 (변경된 필드만)
+                if update_fields_user:
+                    user_locked.save(update_fields=update_fields_user)
+                    print(f"로그: 사용자 {user.username} User 모델 업데이트 완료: {update_fields_user}")
+
+
+                # 4.2 보유 종목(Holdings) 업데이트
+                # 현재 방식: 기존 보유 종목 전체 삭제 후, 클라이언트 데이터 기준으로 새로 생성
+                # 장점: 구현 간단 / 단점: 매번 삭제/생성으로 비효율적일 수 있음, ID 변경 가능성
+
+                user_locked.holdings.all().delete() # User 모델의 related_name='holdings' 사용
+                print(f"로그: 사용자 {user.username} 기존 Holding 레코드 삭제 완료.")
+
+                new_holdings_to_create = [] # 벌크 생성을 위한 리스트
+                total_stock_value_server = 0 # 서버에서 평가액 계산용 (선택적)
+
+                # 클라이언트에서 받은 holdings_data 순회
+                for symbol, holding_info in holdings_data.items():
+                    # 데이터 유효성 검사 강화
+                    quantity = holding_info.get('quantity')
+                    avg_price = holding_info.get('avgPrice')
+                    symbol_str = str(symbol) # 심볼 문자열 확인
+
+                    # 수량은 양수, 평균가는 0 이상인 경우만 처리
+                    if (isinstance(quantity, int) and quantity > 0 and
+                        isinstance(avg_price, (int, float)) and avg_price >= 0):
+
+                        # 새 Holding 객체 생성 (아직 DB 저장 안 함)
+                        new_holdings_to_create.append(Holding(
+                            user=user_locked, # 잠금된 사용자 객체 사용
+                            symbol=symbol_str,
+                            quantity=quantity,
+                            avg_price=avg_price
+                        ))
+                        # 서버에서 평가액 계산 로직 (get_current_price 함수 필요)
+                        # current_price = get_current_price(symbol_str) # 가정
+                        # total_stock_value_server += quantity * current_price
+                    else:
+                         print(f"경고: 사용자 {user.username}의 종목 {symbol} 데이터 유효하지 않음 - 건너<0xEB><0x9B><0x81>. Info: {holding_info}")
+
+                # 준비된 Holding 객체들을 한 번에 DB에 생성 (효율적)
+                if new_holdings_to_create:
+                    Holding.objects.bulk_create(new_holdings_to_create)
+                    print(f"로그: 사용자 {user.username} 새로운 Holding 레코드 {len(new_holdings_to_create)}개 생성 완료.")
+
+                # (선택적) 서버에서 재계산한 포트폴리오 가치 업데이트
+                # user_locked.portfolio_value = user_locked.cash + total_stock_value_server
+                # user_locked.save(update_fields=['portfolio_value'])
+
+                # 4.3 거래 내역(Trades) 추가 (Trade 모델이 있다고 가정)
+                # 이 부분은 클라이언트에서 *새로운* 거래 내역만 보낸다고 가정
+                # 또는 전체 거래 내역을 보내면 중복 체크 후 저장하는 로직 필요
+                # new_trades_to_create = []
+                # for trade_info in trades_data:
+                #     # trade_info 유효성 검사 (필수 필드: symbol, action, quantity, price, timestamp 등)
+                #     if (trade_info.get('symbol') and trade_info.get('action') in ['buy', 'sell'] and
+                #         trade_info.get('quantity') > 0 and trade_info.get('price') >= 0 and trade_info.get('timestamp')):
+                #         # Trade 모델 객체 생성
+                #         new_trades_to_create.append(Trade(
+                #             user=user_locked,
+                #             symbol=trade_info['symbol'],
+                #             action=trade_info['action'],
+                #             quantity=trade_info['quantity'],
+                #             price=trade_info['price'],
+                #             timestamp=trade_info['timestamp'] # 타임스탬프 형식 변환 필요할 수 있음
+                #             # ... 기타 필드 ...
+                #         ))
+                #     else:
+                #         print(f"경고: 사용자 {user.username}의 거래 내역 데이터 유효하지 않음: {trade_info}")
+                #
+                # if new_trades_to_create:
+                #      Trade.objects.bulk_create(new_trades_to_create)
+                #      print(f"로그: 사용자 {user.username} 새로운 Trade 레코드 {len(new_trades_to_create)}개 생성 완료.")
+
+            # 트랜잭션 성공적으로 완료
+
+        except Exception as db_error:
+            # 트랜잭션 내에서 오류 발생 시 롤백됨
+            print(f"오류: 사용자 {user.username} DB 업데이트 중 오류 발생 (롤백됨): {db_error}")
+            traceback.print_exc()
+            return JsonResponse({'status': 'error', 'message': f'데이터베이스 처리 중 오류 발생: {db_error}'}, status=500)
+
+
+        # 5. 성공 응답 반환하기
+        print(f"성공: 사용자 {user.username} 포트폴리오 DB 동기화 완료.")
         return JsonResponse({'status': 'success', 'message': '포트폴리오가 성공적으로 업데이트되었습니다.'})
 
     except Exception as e:
-        # 디버깅을 위해 에러 로그 남기기
-        print(f"사용자 {request.user.username}의 포트폴리오 업데이트 중 오류 발생: {e}")
-        # 일반적인 에러 응답 반환하기
-        return JsonResponse({'status': 'error', 'message': f'내부 서버 오류가 발생했습니다: {e}'}, status=500)
-
+        # 요청 처리 중 예기치 않은 오류 발생
+        print(f"오류: 사용자 {request.user.username if request.user.is_authenticated else '비로그인'} 포트폴리오 업데이트 처리 중 최상위 오류 발생: {e}")
+        traceback.print_exc()
+        return JsonResponse({'status': 'error', 'message': f'서버 내부 오류가 발생했습니다: {e}'}, status=500)
 
 
 
@@ -366,16 +493,6 @@ def get_websocket_key_api(request): # ★ 키 발급 전용 API 뷰 ★
         return JsonResponse({'success': False, 'message': '웹소켓 승인키 발급에 실패했습니다.'}, status=500) # 500 서버 오류
 
 
-@login_required # 시뮬레이터 페이지는 로그인 필수 가정
-def index2_simulator_page(request): # ★ 시뮬레이터 HTML 페이지 렌더링 전용 뷰 ★
-    """ 시뮬레이터 HTML 페이지만 렌더링하는 뷰 """
-    print("시뮬레이터 페이지 요청 받음 (/index2_simulator/)")
-    context = {
-        'user': request.user,
-        # ★★★ 여기서는 websocket_approval_key 를 전달하지 않습니다 ★★★
-    }
-    # 템플릿 파일 경로는 실제 프로젝트 구조에 맞게 확인 필요
-    return render(request, 'main/index2_simulator.html', context)
 
 
 
@@ -740,3 +857,23 @@ def profile_settings_view(request):
 
 
 
+# views.py (예시: index2_simulator_page 뷰)
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+import json
+from django.contrib.auth import get_user_model
+from .models import Holding # 모델 임포트 가정
+
+User = get_user_model()
+
+
+
+@login_required # 시뮬레이터 페이지는 로그인 필수 가정
+def index2_simulator_page_backup(request): # ★ 시뮬레이터 HTML 페이지 렌더링 전용 뷰 ★
+    """ 시뮬레이터 HTML 페이지만 렌더링하는 뷰 """
+    print("시뮬레이터 페이지 요청 받음 (/index2_simulator/)")
+    context = {
+        'user': request.user,
+    }
+    # 템플릿 파일 경로는 실제 프로젝트 구조에 맞게 확인 필요
+    return render(request, 'main/index2_simulator.html', context)

@@ -31,7 +31,6 @@ function updateChartPeriodically() {
 
     // loadUnit 함수가 현재 제목(title)에 표시된 심볼의 데이터를 가져오고,
     // 제공된 interval과 sliderValue를 사용한다고 가정
-    console.log(`[${getCurrentTimestamp()}] 차트 자동 업데이트: 간격=${currentInterval}, 범위=${sliderValue}`);
     loadUnit(currentInterval, sliderValue);
 
 
@@ -41,12 +40,27 @@ function updateChartPeriodically() {
     }
 }
 
+//슬라이더할때 차트를 마지막 한번만 로딩
+function debounce(func, wait) {
+    let timeout; // 타이머 ID 저장 변수
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout); // 기존 타이머 취소 (실행 전에)
+            func.apply(this, args); // 실제 함수 실행
+        };
+        clearTimeout(timeout); // 이전 타이머 취소 (새 이벤트 발생 시)
+        timeout = setTimeout(later, wait); // 새 타이머 설정
+    };
+}
+
+
+
+
 /**
  * 차트 업데이트를 위한 인터벌 타이머를 시작
  */
 function startRealtimeChartUpdates() {
     stopRealtimeChartUpdates(); // 새 타이머 시작 전 기존 타이머 정리
-    console.log(`실시간 차트 업데이트 시작 (${CHART_UPDATE_INTERVAL_MS / 1000}초 마다).`);
     chartUpdateInterval = setInterval(updateChartPeriodically, CHART_UPDATE_INTERVAL_MS);
 }
 
@@ -231,7 +245,6 @@ function handleWebSocketMessage(event) {
                             else { const pe = document.getElementById('chart-price'); if(pe) pe.textContent = newPrice.toFixed(4); }
                         }
 
-                        // ★★★ 포트폴리오 디스플레이 업데이트 호출 ★★★
                         // (실시간 데이터 올 때마다 호출 -> 성능 영향 고려 필요)
                         if (typeof updatePortfolioDisplay === 'function') {
                             updatePortfolioDisplay();
