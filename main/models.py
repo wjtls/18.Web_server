@@ -369,6 +369,41 @@ class Holding(models.Model):
 
 
 
+# 보유종목
+
+class Trade(models.Model):
+    """
+    사용자의 주식/코인 거래(매수/매도 체결) 기록을 저장하는 모델
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, # 이 거래를 한 사용자
+        on_delete=models.CASCADE, # 사용자가 삭제되면 관련 거래 기록도 삭제
+        related_name='trades'     # User 객체에서 .trades 로 접근 가능하게 함
+    )
+    symbol = models.CharField(max_length=20, db_index=True) # 거래된 종목 심볼 (예: TQQQ, KRW-BTC)
+    action = models.CharField(
+        max_length=4, # 'buy' 또는 'sell'
+        choices=[('buy', '매수'), ('sell', '매도')], # 선택지를 명확히 정의
+        db_index=True # 조회 성능을 위해 인덱스 추가
+    )
+    quantity = models.FloatField()  # 거래 수량 (소수점이 가능하도록 FloatField 사용)
+    price = models.FloatField()       # 체결 단가 (소수점이 가능하도록 FloatField 사용)
+    # 매도 거래 시의 손익을 저장 (USD 또는 KRW 등 기준은 통일 필요). 매수 시에는 None
+    profit = models.FloatField(null=True, blank=True)
+    # 거래 체결 시간 (레코드가 생성될 때 자동으로 현재 시간 저장 및 인덱스 추가)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "거래 기록"
+        verbose_name_plural = "거래 기록 목록"
+        ordering = ['-timestamp'] # 기본 정렬: 최신 거래 내역이 가장 먼저 오도록 (-는 내림차순)
+
+    def __str__(self):
+        # __str__ 메서드에서 action choices 값을 사람이 읽기 좋게 표시
+        action_display = dict(self._meta.get_field('action').choices).get(self.action, self.action)
+        # 시간 형식은 필요에 따라 조정
+        timestamp_display = self.timestamp.strftime('%Y-%m-%d %H:%M:%S') if self.timestamp else '시간 정보 없음'
+        return f"{self.user.username} - {self.symbol} {action_display} {self.quantity}주 @ {self.price:.2f} ({timestamp_display})"
 
 
 

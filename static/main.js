@@ -23,25 +23,6 @@ var chart = new Chart(ctx, {
 
 
 
-const renderChart = (info)=>{
-    const ma = getMA(info,5)
-    chart.config.data.datasets = [
-        {
-            data: info,
-            color:{
-                up:"#FF5755",
-                down:"#0A6CFF",
-                upchanged:"#35cd55"
-            }
-        },
-        {
-            data:ma,
-            type:"line"
-        }
-    ]
-    chart.update()
-}
-
 
 const toggle = (e)=>{
     const isChecked = e.target.checked; // 체크박스의 상태를 가져옴

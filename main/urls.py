@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/wallet/withdraw/', views_main.initiate_withdrawal_api_view, name='initiate_withdrawal_api'), # 출금 API 경로 추가
     path('api/get_websocket_key/', views_main.get_websocket_key_api, name='get_websocket_key_api'),#웹소켓 api호출,
     path('api/update_portfolio/', views_main.update_portfolio_api, name='update_portfolio_api'), #포폴 DB에 업데이트
+    path('api/load_portfolio/', views_main.load_portfolio_api, name='load_portfolio_api'), #포폴 DB에서 로드
     path('accounts/profile/', views_main.profile, name='profile'),
     path('base/', auth_views.LoginView.as_view(template_name='main/base'), name='base'),
     path('setup_2fa/', auth_views.LoginView.as_view(template_name='main/setup_2fa'), name='setup_2fa'),
@@ -51,7 +52,8 @@ urlpatterns = [
     #데이터
     path('api/realtime_candle/<str:market>/<str:interval>/<str:symbol>/', views_oversea_stock.get_realtime_candle_data, name='realtime_candle'),
     path("oversea_news/", views_oversea_stock.oversea_news, name="oversea_stock_ask"),
-    path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_oversea_stock.oversea_api, name="oversea_stock_ask"),
+    path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_oversea_stock.oversea_api, name="oversea_stock_ask"), #주가
+    #path("oversea_past_api/<str:minute>/<str:symbol>/", views_oversea_stock.oversea_past_api, name="oversea_past_stock_ask"), #과거 시뮬레이션용 데이터
     path("oversea_ask/<str:id>/", views_oversea_stock.oversea_stock_price,name="oversea_stock_price"),
     path("oversea_list/", views_oversea_stock.oversea_stock_list, name="oversea_stock_list"),
     path("oversea_NASD_list/", views_oversea_stock.oversea_NASD_stock_list, name="oversea_stock_NASD_list"),
@@ -63,13 +65,15 @@ urlpatterns = [
     path("", views_main.index, name="index"),
     path("main", views_main.chat_return, name="main"),
     path("index2", views_main.index2_simulator, name="index2_simulator"),
+    path("index2_1", views_main.index2_1, name="index2_1_past_simulator"),
     path("index3", views_main.index3_strategy, name="index3_strategy"),
     path("index4", views_main.index4_user_market, name="index4_user_market"),
 
 
     #AI
     path('run_backtest/', views_AI.run_backtest, name='run_backtest'),
-    path('api/trader/data/', views_AI.AI_trader_1_get_data, name='ai_trader_1_data'),
+    path('api/trader1/data/', views_AI.AI_trader_1_get_data, name='ai_trader_1_data'),
+    path('api/trader2/data/', views_AI.AI_trader_2_get_data, name='ai_trader_2_data'),
     path('run_fin_RAG/', views_AI.AI_finance_RAG, name='ai_fin_rag'),
 
 ]

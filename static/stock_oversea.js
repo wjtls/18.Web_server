@@ -1,5 +1,390 @@
 
 
+/*
+const renderChart_tradingview = (chartData) => {
+    console.log('[renderChart_tradingview 시작]');
+
+    // --- 인터벌 값 변환 (TradingView 위젯 형식에 맞게) ---
+    // 이 함수는 생성/업데이트 모두 필요하므로 먼저 수행
+    let tvInterval;
+    if (!currentInterval) { // currentInterval 전역 변수 사용
+        console.error("[오류] currentInterval 값이 정의되지 않음! 기본값 '5m' 사용.");
+        currentInterval = '5m';
+        tvInterval = '5';
+    } else if (typeof currentInterval === 'string') {
+        // mapIntervalToTradingViewFormat 헬퍼 함수 사용 (이 함수는 별도 정의 필요, 이전 답변 참고)
+        tvInterval = mapIntervalToTradingViewFormat(currentInterval);
+    } else {
+        console.error("[오류] currentInterval 값이 문자열이 아님:", currentInterval, "기본값 '5m' 사용.");
+        currentInterval = '5m';
+        tvInterval = '5';
+    }
+    console.log(`[인터벌 매핑] currentInterval: '${currentInterval}' -> tvInterval: '${tvInterval}'`);
+
+    // --- 위젯 인스턴스 존재 여부 확인 ---
+    if (window.tvWidgetInstance) {
+        // <<<=== 위젯이 이미 존재하면 업데이트 로직 수행 ===>>>
+        console.log('[업데이트] 기존 위젯 인스턴스 발견. 심볼/인터벌 업데이트 시도...');
+        console.log(`[업데이트] 대상 심볼: ${currentSymbol}, 대상 인터벌(매핑됨): ${tvInterval}`); // 전역 변수 사용
+
+        try {
+            // ★★★ 위젯의 setSymbol 메소드 사용하여 업데이트 ★★★
+            window.tvWidgetInstance.setSymbol(currentSymbol, tvInterval, () => {
+                console.log(`[업데이트] 위젯 심볼/인터벌 변경 완료: 심볼=${currentSymbol}, 인터벌=${tvInterval}`);
+                // 참고: setSymbol이 호출되면 위젯은 datafeed의 getBars를 다시 호출해서
+                // 새 심볼/인터벌에 맞는 데이터를 *스스로* 가져감. 여기서 chartData를 다시 줄 필요 없음.
+            });
+        } catch(setError) {
+            console.error("[업데이트][오류] 위젯 setSymbol 실행 중 오류:", setError);
+             // setSymbol 실패 시 위젯을 강제로 재생성하는 로직 추가 고려 가능
+             // console.log("[업데이트] setSymbol 오류로 위젯 재생성 시도...");
+             // window.tvWidgetInstance.remove();
+             // window.tvWidgetInstance = null;
+             // // 여기서 생성 로직을 다시 호출하거나, 에러 처리 후 종료
+             // // createNewWidget(chartData); // 아래 생성 로직을 별도 함수로 분리했다면 호출
+        }
+
+    } else {
+        // <<<=== 위젯이 없으면 새로 생성하는 로직 수행 ===>>>
+        console.log('[생성] 위젯 인스턴스 없음. 새로 생성 시작...');
+        console.log('[생성] 초기 데이터 샘플:', chartData?.slice(0, 3)); // 초기 데이터 확인
+
+        const chartContainerId = 'tvchart_container';
+        const chartContainer = document.getElementById(chartContainerId);
+
+        // --- 필수 요소 확인 ---
+        if (!chartContainer) {
+            console.error(`[생성][오류] 차트 컨테이너 #${chartContainerId}를 찾을 수 없음.`);
+            return;
+        }
+        if (!Array.isArray(chartData) || chartData.length === 0) {
+            console.warn("[생성][경고] 초기 차트 데이터가 유효하지 않아 생성 중단.");
+            chartContainer.innerHTML = '차트 데이터 없음';
+            return;
+        }
+        if (!currentSymbol || !currentExchange) {
+             console.error(`[생성][오류] currentSymbol 또는 currentExchange 값이 유효하지 않음. Symbol: ${currentSymbol}, Exchange: ${currentExchange}`);
+             return;
+        }
+
+        // --- 데이터 형식 변환 (초기 생성 시에만 필요) ---
+        const tradingViewBars = chartData.map(item => ({
+            time: item.x, open: item.o, high: item.h, low: item.l, close: item.c,
+        }));
+        console.log('[생성] 데이터 변환 완료. 샘플:', tradingViewBars.slice(0, 3));
+
+        // --- 위젯 생성 전 필수 값 확인 로그 ---
+        console.log('--- 위젯 생성 전 확인 ---');
+        console.log('  - 컨테이너 요소:', chartContainer ? '찾음' : '못 찾음!!!');
+        console.log('  - currentSymbol:', currentSymbol);
+        console.log('  - currentExchange:', currentExchange);
+        console.log('  - tvInterval (매핑됨):', tvInterval);
+        console.log('  - TradingView 객체:', typeof TradingView === 'object' && TradingView !== null ? '유효함' : '문제 있음!!!');
+        console.log('-----------------------');
+
+        // --- 위젯 생성 ---
+        try {
+            console.log('[생성] TradingView.widget 생성 시도...');
+            window.tvWidgetInstance = new TradingView.widget({
+                container_id: chartContainerId,
+                symbol: currentSymbol,      // 초기 심볼
+                interval: tvInterval,       // 매핑된 초기 인터벌
+                locale: 'ko',
+                theme: 'dark',
+                style: '1',
+                autosize: true, // 크기 자동 조절
+
+                // --- Datafeed 구현 (pricescale=10000 유지) ---
+                datafeed: new class Datafeed { // Datafeed 구현은 동일
+                    constructor(historicalBars) {
+                        // constructor에서 초기 historicalBars를 받아두는 건 최초 로딩 시 유용할 수 있지만,
+                        // getBars를 동적으로 바꿀 거면 여기서 this._bars를 저장하는 게 필수는 아니게 됨.
+                        // 아니면 여기서 받은 초기 데이터를 캐시 등으로 활용할 수도 있고.
+                        // 여기서는 getBars에서만 서버 통신하도록 수정할게.
+                        console.log("[TradingView DataFeed] 생성자 호출됨.");
+                        // this._bars = historicalBars; // 동적 로딩 시 이 라인은 필요 없을 수 있음
+                    }
+                    // ... resolveSymbol 메소드는 그대로 둬 ...
+
+                    getBars(symbolInfo, resolution, periodParams, onHistoryCallback, onErrorCallback) {
+                        console.log(`[TradingView DataFeed] === getBars 호출됨: ${symbolInfo.name}, 해상도: ${resolution} ===`);
+                        console.log(`[TradingView DataFeed] 요청 기간: ${new Date(periodParams.from * 1000)} ~ ${new Date(periodParams.to * 1000)} (Unix: ${periodParams.from} ~ ${periodParams.to})`);
+
+                        // --- TradingView 해상도 값을 네 백엔드 URL 형식에 맞게 변환 ---
+                        // 'resolution' 값은 '5', '15', '60', 'D', 'W' 등 TradingView 형식이야.
+                        // 네 URL '<str:minute>' 부분에 어떤 형식을 기대하는지 확인하고 매핑해야 해.
+                        // 만약 URL이 '5', '15', '60'은 숫자로 받고 'D', 'W'는 문자로 받는다면 아래처럼
+                        let backendInterval;
+                        if (resolution === 'D') {
+                            backendInterval = 'D';
+                        } else if (resolution === 'W') {
+                            backendInterval = 'W';
+                        } else {
+                            // 분/시간 단위는 숫자로 변환 (TradingView '60' -> 백엔드 '60')
+                             backendInterval = resolution; // TradingView resolution이 이미 숫자 문자열이면 그대로 사용
+                            // 만약 TradingView 240 -> 네 백엔드 4h 이런 식이라면 여기서 변환 로직 필요
+                            // backendInterval = mapTradingViewResolutionToBackendFormat(resolution); // 이런 헬퍼 함수 필요
+                        }
+                        console.log(`[TradingView DataFeed] 매핑된 백엔드 인터벌: ${backendInterval}`);
+
+
+                        // --- 백엔드 API 호출 ★★★ 네 Django URL 패턴에 맞게 조정 ★★★ ---
+                        // 네 URL은 /oversea_api/<str:minute>/<str:symbol>/<str:exchange_code> 야.
+                        // 그리고 TradingView getBars는 'from', 'to' 기간 파라미터를 주는데, 네 URL은 이게 없어! ★ 중요 ★
+                        // 네 Django 백엔드 /oversea_api 뷰도 'from', 'to' 파라미터를 받아서
+                        // 해당 기간의 데이터만 필터링해서 넘겨주도록 수정해야만 해.
+                        // 그렇지 않으면 항상 전체 데이터를 가져오게 되고, 차트가 느려지거나 멈출 거야.
+                        const symbol = symbolInfo.name;
+                        const exchange = symbolInfo.exchange; // resolveSymbol에서 설정된 값 사용
+                        // 'from', 'to' 파라미터를 URL에 추가하는 형식 (예: 쿼리 파라미터)
+                        const apiUrl = `/oversea_api_from_to/${backendInterval}/${symbol}/${exchange}?from=${periodParams.from}&to=${periodParams.to}`;
+                        console.log(`[TradingView DataFeed] API 호출 URL: ${apiUrl}`);
+
+                        fetch(apiUrl)
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! status: ${response.status}`);
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                if (!data || data.length === 0) {
+                                    console.warn("[TradingView DataFeed] getBars: 서버에서 데이터 없음.", data);
+                                    // 데이터가 없을 때는 noData: true 로 콜백 호출
+                                    onHistoryCallback([], { noData: true });
+                                } else {
+                                    // ★★★ 서버에서 받은 데이터 형식을 TradingView 형식으로 변환 ★★★
+                                    // 네 Django 뷰에서 어떤 형식으로 데이터를 주는지에 따라 이 부분 코드가 달라짐.
+                                    // 예를 들어 각 항목이 { 'timestamp': ..., 'open': ..., 'high': ..., 'low': ..., 'close': ..., 'volume': ... } 라면
+                                    const bars = data.map(item => ({
+                                         time: item.timestamp * 1000, // TradingView는 밀리초 단위 타임스탬프를 기대
+                                         open: item.open,
+                                         high: item.high,
+                                         low: item.low,
+                                         close: item.close,
+                                         volume: item.volume || 0 // 볼륨 데이터가 있다면 추가, 없으면 0 또는 null
+                                    }));
+                                    console.log(`[TradingView DataFeed] getBars: 서버에서 ${bars.length}개 데이터 받음. 샘플:`, bars.slice(0, 3));
+                                    onHistoryCallback(bars, { noData: false });
+                                }
+                            })
+                            .catch(error => {
+                                console.error("[TradingView DataFeed] getBars 데이터 가져오기 오류:", error);
+                                onErrorCallback(`Error fetching data: ${error.message}`);
+                            });
+                    }
+                    subscribeBars(symbolInfo, resolution, onRealtimeCallback, listenerGuid) {
+                         console.log(`[TradingView DataFeed] === subscribeBars 호출됨: ${symbolInfo.name}, 해상도: ${resolution}, Guid: ${listenerGuid} ===`);
+
+                        // 위젯이 넘겨준 onRealtimeCallback 함수를 listenerGuid와 함께 저장해 둠.
+                        // 이 콜백을 나중에 네 실시간 데이터 수신부에서 호출할 거야.
+                        this._subscribers[listenerGuid] = {
+                            symbolInfo: symbolInfo,
+                            resolution: resolution,
+                            onRealtimeCallback: onRealtimeCallback, // ★★★ 이 함수를 저장! ★★★
+                            // 필요한 경우 여기에 마지막 봉 데이터 정보 등 저장
+                        };
+
+                         // ★★★ 여기서 네 백엔드 실시간 데이터 스트림 구독을 실제로 시작하는 로직 호출 필요 ★★★
+                         // 예시: 네 WebSocket 클라이언트 객체의 구독 메소드 호출
+                         // connectRealtimeStream(symbolInfo.name, resolution, listenerGuid); // listenerGuid를 같이 넘겨주면 실시간 데이터 수신 시 구분하기 좋음
+                         console.log(`[TradingView DataFeed] 실시간 데이터 구독 시작 요청: 심볼 ${symbolInfo.name}, 해상도 ${resolution}, GUID ${listenerGuid}`);
+                    }
+
+                    // 위젯이 실시간 데이터 구독 해지를 요청할 때 호출됨 (차트가 숨겨지거나 심볼 변경 시 등)
+                    unsubscribeBars(listenerGuid) {
+                         console.log(`[TradingView DataFeed] === unsubscribeBars 호출됨: ${listenerGuid} ===`);
+
+                        // 저장해 둔 구독 정보 삭제
+                        delete this._subscribers[listenerGuid];
+
+                        // ★★★ 여기서 네 백엔드 실시간 데이터 스트림 구독을 실제로 해지하는 로직 호출 필요 ★★★
+                        // 예시: 네 WebSocket 클라이언트 객체의 구독 해지 메소드 호출
+                         // disconnectRealtimeStream(listenerGuid);
+                         console.log(`[TradingView DataFeed] 실시간 데이터 구독 해지 요청: GUID ${listenerGuid}`);
+                    }
+
+                    // 필요하다면 TradingView resolution 값을 네 백엔드 형식으로 매핑하는 헬퍼 함수를 datafeed 안에 추가
+                    // mapTradingViewResolutionToBackendFormat(resolution) { ... }
+                }(),
+                with_technical_indicators: true, // 기술적 지표 UI 표시 여부
+                allow_symbol_change: false, // 위젯 내에서 심볼 변경 UI 허용 여부 (false 권장, 네 UI로 변경 유도)
+                allow_resolution_change: true, // 위젯 내에서 해상도 변경 UI 허용 여부
+
+            });
+            console.log('[생성] TradingView.widget 생성 성공. 인스턴스:', window.tvWidgetInstance);
+
+        } catch (widgetError) {
+            console.error('[생성][오류] TradingView.widget 생성자에서 에러 발생 !!!', widgetError);
+            if (chartContainer) { chartContainer.innerHTML = '<p style="color: red;">차트 생성 오류 발생.</p>'; }
+        }
+    } // end of else (위젯 새로 생성)
+
+    console.log('[renderChart_tradingview 종료]');
+
+}; // end of renderChart_tradingview
+
+
+// ★★★ 인터벌 값 변환 헬퍼 함수 ★★★
+function mapIntervalToTradingViewFormat(intervalString) {
+    if (!intervalString || typeof intervalString !== 'string') return '5'; // 기본값
+
+    if (intervalString.endsWith('m')) {
+        return intervalString.replace('m', '');
+    } else if (intervalString.endsWith('h')) {
+        const hours = parseInt(intervalString.replace('h', ''), 10);
+        // TradingView 표준 분봉 해상도에 맞추는 것이 좋음 (e.g., 60, 120, 180, 240)
+        // 6시간(360) 같은 비표준은 지원 안될 수 있음. 여기서는 일단 계산값 반환.
+        return (hours * 60).toString();
+    } else if (intervalString.endsWith('d')) {
+        return intervalString.replace('d', 'D');
+    } else if (intervalString.endsWith('w')) {
+        return intervalString.replace('w', 'W');
+    }
+    // 숫자 문자열 ('1', '5' 등) 이나 'D', 'W' 등은 그대로 반환
+    return intervalString;
+}
+
+ */
+
+const renderChart223 = (info)=>{
+    const ma = getMA(info,5)
+    chart.config.data.datasets = [
+        {
+            data: info,
+            color:{
+                up:"#FF5755",
+                down:"#0A6CFF",
+                upchanged:"#35cd55"
+            }
+        },
+        {
+            data:ma,
+            type:"line"
+        }
+    ]
+    chart.update()
+}
+
+
+
+
+const renderChart = (info)=>{
+    chart.config.data.datasets = [
+        {
+            data: info,
+            color:{
+                up:"#FF5755",
+                down:"#0A6CFF",
+                upchanged:"#35cd55"
+            }
+        }
+    ]
+    chart.update()
+}
+
+
+
+
+
+
+// renderChart 함수 수정 (예시: 차트 인스턴스 생성 로직 포함)
+const renderChart22 = (info) => {
+
+    const canvas = document.getElementById('financialChart');
+    if (!canvas) {
+         console.error("오류: 'financialChart' 캔버스 요소를 찾을 수 없습니다.");
+         console.log("--- renderChart 함수 종료 (캔버스 요소 오류) ---"); // 종료 로그
+         return;
+    }
+    const ctx = canvas.getContext('2d');
+
+
+    // ★★★ 수정된 파괴 로직: chartInstance 변수 대신 캔버스 자체를 확인하고, 결과가 유효할 때만 destroy 호출 ★★★
+    const existingChart = Chart.getChart(canvas); // 캔버스에 연결된 Chart 인스턴스 가져오기 (없으면 undefined)
+
+    // 캔버스에 기존 Chart 인스턴스가 발견되면 (existingChart가 undefined가 아니면) 파괴
+    if (existingChart) { // ★ 여기에 null/undefined 체크가 포함된 거야! ★
+         console.log(">>> 캔버스에 기존 Chart 인스턴스 발견. 파괴 시도:", existingChart); // 파괴 시도 로그
+         try {
+             existingChart.destroy(); // ★ existingChart가 null/undefined가 아닐 때만 이 코드가 실행됨 ★
+             console.log(">>> 캔버스 기존 Chart 인스턴스 파괴 성공."); // 파괴 성공 로그
+         } catch (e) {
+             console.error(">>> 캔버스 기존 Chart 인스턴스 파괴 중 오류 발생:", e); // 파괴 오류 로그
+             console.log("--- renderChart 함수 종료 (파괴 오류) ---"); // 종료 로그
+             throw e; // 에러를 다시 throw
+         }
+         // 캔버스에 붙어있던 인스턴스를 파괴했으니, 우리가 관리하는 변수도 null로 설정 (상태 동기화)
+         if (chartInstance === existingChart) { // 만약 chartInstance 변수가 파괴된 그 인스턴스였다면
+             chartInstance = null;
+         } else if (chartInstance !== null) {
+         } else {
+         }
+    } else {
+    }
+    // ★★★ 수정된 파괴 로직 끝 ★★★
+
+
+    // 새 Chart 인스턴스 생성 시작 (이제 캔버스가 비어있을 것으로 기대)
+    console.log(">>> 새 Chart.js 인스턴스 생성 시작..."); // 생성 시작 로그
+     try {
+         // 새 인스턴스를 생성하고 chartInstance 변수에 할당
+         chartInstance = new Chart(ctx, { // 변수 할당은 생성 성공 후
+             type: 'candlestick', // 타입 확인
+             data: { datasets: [] },
+             options: {
+                 responsive: true, maintainAspectRatio: false,
+                 scales: {
+                     x: { type: 'time', time: { unit: currentInterval.endsWith('m') ? 'minute' : 'day' } },
+                     y: { /* ... 기존 y축 설정 ... */ }
+                 },
+                 plugins: {
+                     buyAveragePriceLine: {}, // 평균가 라인 플러그인 활성화
+                     tooltip: { /* ... */ },
+                     legend: { display: false }
+                 },
+                 // ... 다른 옵션 ...
+             }
+         });
+     } catch (e) {
+         throw e; // 에러를 다시 throw
+     }
+
+    // Chart.js 플러그인 전역 등록 (DOMContentLoaded에서 이미 했다면 여기서 제거)
+    // Chart.register(buyAveragePriceLinePlugin);
+
+
+    // 데이터셋 업데이트
+    const ma5 = typeof getMA === 'function' ? getMA(info, 5) : []; // getMA 함수 존재 확인
+    const ma20 = typeof getMA === 'function' ? getMA(info, 20) : []; // getMA 함수 존재 확인
+
+    chartInstance.config.data.datasets = [
+        {
+            label: 'Price', data: info, type: 'candlestick',
+            color: { up: "#FF5755", down: "#0A6CFF", upchanged: "#35cd55" },
+            borderColor: function(context) {
+                 const dataPoint = context.dataset.data[context.dataIndex];
+                 if (dataPoint) { return dataPoint.c > dataPoint.o ? '#FF5755' : '#0A6CFF'; }
+                 return '#000';
+             }
+        },
+        {
+            label: 'MA(5)', data: ma5, type: 'line',
+            borderColor: 'orange', borderWidth: 1, pointRadius: 0, fill: false
+        },
+         {
+             label: 'MA(20)', data: ma20, type: 'line',
+             borderColor: 'purple', borderWidth: 1, pointRadius: 0, fill: false
+         }
+    ];
+
+    // 차트 업데이트
+    chartInstance.update();
+};
+
+
+
+
 const load_oversea_StockCandle = (id, unit, exchange_code) => {
 
     // --- 1. 기존 폴링 중지 ---
@@ -17,21 +402,16 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
     // --- 3. UI 업데이트 ---
     const interval = unit;
     const slidervalue = document.getElementById('simulatorSlider');
+    const priceElement = document.getElementById('chart-price'); // 현재가 표시할 <b> 태그 찾기
     const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50;
     document.getElementById('identify').value = id; //id 값 업데이트 차트에서
     document.getElementById('exchange').value = exchange_code
     document.getElementById('chart-title').textContent = `종목 : ${id}` //차트 타이틀업뎃
-
-    try {
-        document.getElementById('identify').value = id;
-        document.getElementById('exchange').value = exchange_code;
-        document.getElementById('chart-title').textContent = `종목 : ${id}`;
-        document.getElementById('chart-interval').textContent = unit;
-    } catch (uiError) { console.error("UI 업데이트 중 오류:", uiError); }
+    document.getElementById('chart-interval').textContent = unit;
 
     // --- 4. 과거 데이터 로드 API 호출 ---
     // ★★ 이 API 엔드포인트(/oversea_api/...)가 과거 데이터를 충분히 반환하는지 확인 ★★
-    const historicalApiUrl = `/oversea_api/${unit}/${id}/${exchange_code}`; // 과거 데이터 API 주소
+    const historicalApiUrl = `/oversea_api/${unit}/${id}/${exchange_code}`; // 가격 API 주소
 
     getJson2(historicalApiUrl).then(json => {
          let rawData = json.response?.output2 || json.response?.data;
@@ -50,7 +430,6 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
          // ★★★ 여기가 누락된 핵심 로직 ★★★
 
          // --- ★★★ 수정/복원 필요한 부분 끝 ★★★ ---
-
          // 4. 차트 데이터 형식으로 변환 (이제 latestResult 사용 가능)
          const chartData = latestResult.map(item => ({
              x: new Date(item.localDate).getTime(),
@@ -59,7 +438,6 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
              l: item.lowPrice,
              c: item.closePrice
          }));
-
          currentChartData = chartData; // 전역 변수 업데이트
 
          // ★★★ 2. 현재가 표시 업데이트 ★★★
@@ -82,103 +460,44 @@ const load_oversea_StockCandle = (id, unit, exchange_code) => {
              priceElement.textContent = "--.--";
          }
 
-         // 차트 렌더링
+         // 초기 차트 렌더링
          renderChart(currentChartData);
          updateCurrentPriceDisplay(currentChartData);
-         updatePortfolioDisplay(); //포트폴리오 업데이트
+         updatePortfolioDisplay();
 
-         // --- 5. 실시간 데이터 폴링 시작, 대규모 사용자에서 안좋음---
-         // 한투 api
+         // --- 5. 실시간 데이터 폴링 시작 ---
+         // ★★ exchangeCode를 API market 코드로 변환 필요 시 여기서 처리 ★★
          //const apiMarketCode = currentExchange;
          //startPolling(currentSymbol, apiMarketCode); // 폴링 시작
 
-    })
-};
-
-const load_oversea_StockCandle2 = (id, unit, exchange_code) => {
-
-    // --- 종목 변경 시 웹소켓 구독/해제 처리 ---
-    if (currentSymbol && currentExchange && (currentSymbol !== id || currentExchange !== exchange_code)) {
-        // 이전 종목 구독 해제
-        unsubscribeRealtimePrice(currentSymbol, currentExchange);
-    }
-    // 현재 정보 업데이트
-    currentSymbol = id;
-    currentExchange = exchange_code;
-    // ------------------------------------
-
-    const interval = unit;
-    const slidervalue = document.getElementById('simulatorSlider');
-    const priceElement = document.getElementById('chart-price'); // 현재가 표시할 <b> 태그 찾기
-    const numberOfCandlesToShow = parseInt(slidervalue.value, 10) || 50;
-    document.getElementById('identify').value = id; //id 값 업데이트 차트에서
-    document.getElementById('exchange').value = exchange_code
-    document.getElementById('chart-title').textContent = `종목 : ${id}` //차트 타이틀업뎃
-
-    getJson2(`/oversea_api/${interval}/${id}/${exchange_code}`).then(json => {
-         // 1. API 응답에서 데이터 추출 및 기본 검사
-         let rawData = json.response?.data; // API 응답 구조에 맞게 조정 필요
-         if (!Array.isArray(rawData)) {
-             console.error("API 응답 데이터(rawData)가 배열이 아닙니다.", json);
-             rawData = []; // 빈 배열로 초기화하여 이후 코드 에러 방지
-         } else {
-             // 2. 데이터 정렬 (localDate 기준 오름차순)
-             rawData.sort((a, b) => new Date(a.localDate) - new Date(b.localDate));
-         }
-
-         // 3. 표시할 캔들 개수(numberOfCandlesToShow)에 맞춰 최신 데이터 추출
-         const startIndex = Math.max(0, rawData.length - numberOfCandlesToShow);
-         // ★★★ 여기가 누락된 핵심 로직 ★★★
-         const latestResult = rawData.slice(startIndex);
-         // ★★★ 여기가 누락된 핵심 로직 ★★★
-
-         // --- ★★★ 수정/복원 필요한 부분 끝 ★★★ ---
-
-         // 4. 차트 데이터 형식으로 변환 (이제 latestResult 사용 가능)
-         const chartData = latestResult.map(item => ({
-             x: new Date(item.localDate).getTime(),
-             o: item.openPrice,
-             h: item.highPrice,
-             l: item.lowPrice,
-             c: item.closePrice
-         }));
-
-         currentChartData = chartData; // 전역 변수 업데이트
-
-         // 차트 렌더링
-         renderChart(currentChartData);
-
-         if (priceElement) { // 해당 ID를 가진 HTML 요소가 있는지 확인
-             if (currentChartData && currentChartData.length > 0) {
-                 // chartData 배열의 가장 마지막 요소(가장 최신 캔들)의 종가(.c) 가져오기
-                 const lastClosePrice = currentChartData[currentChartData.length - 1].c;
-
-                 if (typeof lastClosePrice === 'number' && !isNaN(lastClosePrice)) {
-                     // 숫자가 맞으면 화면에 표시 (소수점 자릿수는 필요에 따라 toFixed()로 조절)
-                     priceElement.textContent = lastClosePrice.toFixed(4); // 예: TQQQ는 소수점 4자리까지 표시
-                     // (선택 사항) 초기 가격 표시 시 CSS 클래스 초기화 (예: price-neutral)
-                     // priceElement.className = 'price-neutral';
-                 } else {
-                      console.warn("차트 데이터의 마지막 종가 값이 유효하지 않습니다:", lastClosePrice);
-                      priceElement.textContent = '--.--'; // 유효하지 않으면 대체 텍스트
-                 }
-             } else {
-                 // API에서 과거 데이터를 못 받아왔거나 비어있는 경우
-                 console.warn("차트 데이터가 비어있어 초기 가격을 표시할 수 없습니다.");
-                 priceElement.textContent = '--.--'; // 데이터 없을 때 대체 텍스트
-             }
-         } else {
-             console.error("#chart-price 요소를 HTML에서 찾을 수 없습니다."); // ID 오타 등 확인 필요
-         }
-         // --- ▲▲▲ 초기 현재가 표시 업데이트 로직 완료 ▲▲▲ ---
-
-         //웹소켓 실시간 가격
-         subscribeRealtimePrice(currentSymbol, currentExchange);
-
     }).catch(error => {
-         console.error(`/${id}/${interval}/ 데이터 요청 중 오류:`, error); // 에러 로깅
+         console.error(`과거 데이터 (${historicalApiUrl}) 요청 중 오류:`, error);
+         currentChartData = []; // 오류 시 데이터 비우기
+         renderChart(currentChartData);
+         if (priceElement) priceElement.textContent = '과거 데이터 로드 오류';
+         // 오류 발생 시 폴링을 시작할지 결정 필요 (여기서는 시작하지 않음)
+    });
+
+
+    //매수 붉은선 위한 코드 추가
+    getJson2(historicalApiUrl).then(json => {
+        // ... (데이터 처리 코드) ...
+        console.log("load_oversea_StockCandle: 과거 데이터 로드 및 처리 완료. renderChart 호출 전.");
+        renderChart(currentChartData); // 여기서 renderChart 호출
+        console.log("load_oversea_StockCandle: renderChart 호출 완료.");
+        // ... (나머지 코드) ...
+    }).catch(error => {
+        console.error(`과거 데이터 (${historicalApiUrl}) 요청 중 오류 (catch 블록):`, error);
+        currentChartData = [];
+        console.log("load_oversea_StockCandle: 오류 발생. renderChart 호출 전.");
+        renderChart(currentChartData); // 오류 시에도 renderChart 호출
+        console.log("load_oversea_StockCandle: 오류 발생 후 renderChart 호출 완료.");
+        // ... (나머지 오류 처리 코드) ...
     });
 };
+
+
+
 
 const renderInfo2 = (label, desc, price, change) => {
     let header = document.getElementById("chart").getElementsByTagName("div")[0]

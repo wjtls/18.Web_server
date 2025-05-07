@@ -58,7 +58,7 @@ const loadCoin = (id)=>{
     loadCoinCurrent(id)
     toggleCoin()
     document.getElementById("identify").value=id
-    loadUnit("day")
+    ("day")
 }
 
 const toggleCoin = ()=>{

@@ -44,6 +44,10 @@ def index2_simulator(request):
 
     return render(request, 'main/index2_simulator.html', context)
 
+
+def index2_1(request):
+    return render(request,"main/index2_1_past_simulator.html")
+
 def index3_strategy(request):
     return render(request,"main/index3_strategy.html")
 
@@ -123,7 +127,7 @@ def register_view(request):
             # --- 추가 필드 값 설정 ---
             cash = 1000000,
             portfolio_value = 1000000,
-            level = 1,
+            level_xp = 0.0,
             user_tier = "Bronze",
             real_cash = 0,  # 진짜 돈
             # otp_secret 설정 등 필요시 추가
@@ -148,25 +152,6 @@ from django.contrib.auth.decorators import login_required
 def profile(request):
     # 이 뷰 함수는 로그인된 사용자만 접근할 수 있도록
     return redirect('index')
-
-@login_required
-def profile222(request): # 함수 이름은 실제 사용하는 이름으로 변경
-    user = request.user
-    # ... (기존에 context 데이터를 만드는 로직) ...
-
-    # --- ↓↓↓ ASI Coin 잔액 가져와서 context에 추가 ↓↓↓ ---
-    asi_balance = user.asi_coin_balance
-    # --- ↑↑↑ ASI Coin 잔액 가져와서 context에 추가 완료 ↑↑↑ ---
-
-    context = {
-        'user': user,
-        # --- ↓↓↓ context 딕셔너리에 asi_balance 추가 ↓↓↓ ---
-        'asi_balance': asi_balance,
-        # --- ↑↑↑ context 딕셔너리에 asi_balance 추가 완료 ↑↑↑ ---
-        # ... (기존 context 변수들) ...
-    }
-    # dashboard.html 템플릿 경로 확인 및 렌더링
-    return render(request, 'main/dashboard.html', context)
 
 
 
@@ -362,6 +347,115 @@ def update_portfolio_api(request):
 
 
 
+import json
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET # GET 요청만 허용
+from django.contrib.auth.decorators import login_required # 로그인된 사용자만 접근 허용
+from django.forms.models import model_to_dict # 모델 인스턴스를 딕셔너리로 변환
+# Traceback import (오류 로깅용)
+import traceback
+
+
+# User 모델 import
+from .models import User # 사용자 모델 import
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+# Holding, Trade 모델 import (네 models.py에 정의되어 있어야 함)
+# from .models import Holding, Trade # 보유 종목, 거래 내역 모델 import
+
+# 임시로 모델 클래스 이름만 가정 (실제 네 모델 이름으로 변경 필요)
+# class Holding: pass # 예시
+# class Trade: pass # 예시
+
+# ★★★ 중요: 실제 네 models.py에 정의된 User, Holding, Trade 모델을 정확히 임포트하고 사용해야 함 ★★★
+# Holding 모델이 User와 ForeignKey로 연결되어 있고 related_name이 'holdings'라고 가정
+# Trade 모델도 User와 ForeignKey로 연결되어 있고 related_name이 'trades'라고 가정
+# Holding 모델에 symbol, quantity, avg_price 등의 필드가 있다고 가정
+# Trade 모델에 symbol, action, quantity, price, profit, timestamp 등의 필드가 있다고 가정
+
+@login_required # 로그인된 사용자만 이 API에 접근 가능
+@require_GET   # 이 API는 GET 요청만 받음
+def load_portfolio_api(request):
+    """
+    로그인된 사용자의 포트폴리오 상태를 DB에서 조회하여 JSON으로 반환하는 API 엔드포인트.
+    """
+    try:
+        # 1. 현재 로그인된 사용자 객체 가져오기
+        user = request.user
+
+        print(f"로그: 사용자 {user.username}의 포트폴리오 상태 조회 요청 수신.")
+
+        # 2. 사용자 포트폴리오 데이터 조회
+        # User 모델 필드들
+        # user_data = model_to_dict(user, fields=['username', 'cash', 'initial_deposit', 'level', 'user_tier', 'real_cash', 'portfolio_value'])
+
+        # 2.1 User 모델의 기본 정보 가져오기
+        portfolio_data = {
+            'userName': user.username,
+            # 필드 이름은 실제 네 User 모델의 필드 이름과 JSON 응답에서 사용할 이름에 맞춰
+            'cash': user.cash, # User 모델에 cash 필드가 있다고 가정
+            # 'initialDeposit': user.initial_deposit, # User 모델에 initial_deposit 필드가 있다고 가정
+            'level': user.current_level, # User 모델에 level 필드가 있다고 가정
+            'tier': user.user_tier, # User 모델에 user_tier 필드가 있다고 가정
+            'realCash': user.real_cash, # User 모델에 real_cash 필드가 있다고 가정
+            'portfolioValue': user.portfolio_value, # User 모델에 portfolio_value 필드가 있다고 가정
+            # 필요에 따라 User 모델의 다른 필드들도 추가
+        }
+
+        # 2.2 보유 종목 (Holdings) 정보 가져오기
+        # User 모델의 related_name='holdings'를 사용하여 보유 종목 객체들 조회
+        holdings_list = []
+        # user.holdings.all() -> User 모델에 related_name='holdings'로 연결된 Holding 객체들
+        for holding in user.holdings.all(): # Holding 모델 객체들을 순회
+            # Holding 모델 필드들을 딕셔너리로 변환하여 리스트에 추가
+            # 필드 이름은 실제 네 Holding 모델 필드 이름과 JSON 응답에 맞춰
+            holdings_list.append({
+                # 'id': holding.id, # 클라이언트에서 Holding 객체의 DB ID가 필요하다면 추가
+                'symbol': holding.symbol, # Holding 모델에 symbol 필드가 있다고 가정
+                'quantity': holding.quantity, # Holding 모델에 quantity 필드가 있다고 가정
+                'avgPrice': holding.avg_price, # Holding 모델에 avg_price 필드가 있다고 가정
+                # 필요에 따라 Holding 모델의 다른 필드들도 추가
+            })
+        # 클라이언트 portfolio.holdings가 딕셔너리 형태였으므로 여기서도 딕셔너리로 구성
+        # { symbol: { quantity: ..., avgPrice: ... }, ... } 형태
+        holdings_dict = {h['symbol']: h for h in holdings_list} # 심볼을 키로 하는 딕셔너리 생성
+
+        portfolio_data['holdings'] = holdings_dict
+
+
+        # 2.3 거래 내역 (Trades) 정보 가져오기
+        # User 모델의 related_name='trades'를 사용하여 거래 내역 객체들 조회
+        trades_list = []
+        # user.trades.all() -> User 모델에 related_name='trades'로 연결된 Trade 객체들
+        # 최신 거래 내역부터 보여주려면 order_by('-timestamp') 등을 추가
+        for trade in user.trades.all().order_by('-timestamp'): # Trade 모델 객체들을 순회 (최신순 정렬 예시)
+            # Trade 모델 필드들을 딕셔너리로 변환하여 리스트에 추가
+            # 필드 이름은 실제 네 Trade 모델 필드 이름과 JSON 응답에 맞춰
+            trades_list.append({
+                # 'id': trade.id, # 클라이언트에서 Trade 객체의 DB ID가 필요하다면 추가
+                'timestamp': trade.timestamp.isoformat() if trade.timestamp else None, # 날짜/시간 형식 변환 (ISO 8601 권장)
+                'symbol': trade.symbol, # Trade 모델에 symbol 필드가 있다고 가정
+                'action': trade.action, # Trade 모델에 action 필드가 있다고 가정 ('buy', 'sell' 문자열)
+                'quantity': trade.quantity, # Trade 모델에 quantity 필드가 있다고 가정
+                'price': trade.price, # Trade 모델에 price 필드가 있다고 가정 (체결 단가)
+                'profit': trade.profit if trade.action == 'sell' else None, # Trade 모델에 profit 필드가 있다면 (매도 시 손익)
+                # 필요에 따라 Trade 모델의 다른 필드들도 추가
+            })
+
+        portfolio_data['trades'] = trades_list
+
+
+        # 3. 포트폴리오 데이터를 JSON 응답으로 반환
+        print(f"로그: 사용자 {user.username}의 포트폴리오 데이터 조회 완료. JSON 응답 반환.")
+        return JsonResponse(portfolio_data)
+
+    except Exception as e:
+        # 조회 중 예기치 않은 오류 발생
+        print(f"오류: 사용자 {request.user.username if request.user.is_authenticated else '비로그인'} 포트폴리오 조회 처리 중 오류 발생: {e}")
+        traceback.print_exc() # 서버 로그에 자세한 오류 추적 정보 출력
+        # 클라이언트에게 오류 응답 반환
+        return JsonResponse({'message': '포트폴리오 데이터를 가져오는데 실패했습니다.', 'error': str(e)}, status=500)
 
 
 
@@ -706,13 +800,16 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST # POST 요청만 받도록
 from django.views.decorators.csrf import ensure_csrf_cookie # CSRF 처리 관련 (필요시)
 from django.contrib.auth.decorators import login_required
-from chart.blockchain_reward import process_trade_result
+from chart.blockchain_reward import process_trade_result # 코인 보상 업데이트
 
 @login_required # 로그인 필수
 @require_POST  # POST 요청만 허용
 # @ensure_csrf_cookie # CSRF 쿠키 보장 (필요에 따라)
 def process_trade_result_api_view(request):
     """ JavaScript로부터 매도 결과를 받아 서비스 함수를 호출하는 API 뷰 """
+    # 뷰 함수에 @transaction.atomic을 적용하면 이 함수 내부에서 호출하는 모든 DB 작업이 하나의 트랜잭션으로 묶임
+    # process_trade_result 내부의 grant_asi_reward도 이 트랜잭션에 포함됨.
+    # grant_asi_reward 자체에 @transaction.atomic이 있어도 중첩 트랜잭션으로 잘 동작함.
     try:
         # 요청 본문(body)에서 JSON 데이터 읽기
         data = json.loads(request.body)
@@ -720,28 +817,40 @@ def process_trade_result_api_view(request):
         user_id = request.user.id
 
         # profit 값이 숫자인지 확인 (간단한 유효성 검사)
-        if profit_usd is None or not isinstance(profit_usd, (int, float)):
+        # isinstance(profit_usd, (int, float, str)) 로 더 유연하게 받을 수도 있음
+        if profit_usd is None or not isinstance(profit_usd, (int, float, str)): # 숫자나 문자열 형태의 숫자를 허용
             return JsonResponse({'success': False, 'message': '유효한 수익 정보(profit)가 필요합니다.'}, status=400)
 
-        # 서비스 함수 호출하여 DB 업데이트 시도
-        success = process_trade_result(user_id, float(profit_usd))
+        # service 함수 호출하여 DB 업데이트 시도
+        # process_trade_result 함수는 이제 (처리 성공 여부, 지급된 ASI 금액(Decimal))을 반환
+        # profit_usd가 문자열일 경우 float으로 변환해서 전달
+        success, granted_asi_amount = process_trade_result(user_id, float(profit_usd)) # float으로 변환해서 전달
 
         if success:
-            # 성공 시
-            return JsonResponse({'success': True, 'message': '매도 결과가 처리되었습니다.'})
+            # 성공 시, 응답에 지급된 ASI 금액 포함
+            # Decimal 타입은 JsonResponse가 처리 못하므로 문자열이나 float으로 변환
+            # granted_asi_amount는 Decimal("0.0") 일 수 있으므로 float 변환 안전
+            return JsonResponse({
+                'success': True,
+                'message': '매도 결과가 처리되었습니다.',
+                'asi_reward': float(granted_asi_amount) # Decimal을 float으로 변환하여 응답
+            })
         else:
-            # 서비스 함수 내부에서 실패한 경우 (예: 사용자 없음, DB 오류 등)
+            # 서비스 함수 내부에서 실패한 경우
             # process_trade_result 함수 내부의 print 로그로 원인 파악 필요
-            return JsonResponse({'success': False, 'message': '매도 결과 처리 중 서버 내부 오류가 발생했습니다.'}, status=500)
+            # 실패 시 보상 금액은 0이므로 포함하지 않거나 0으로 포함
+             return JsonResponse({'success': False, 'message': '매도 결과 처리 중 서버 내부 오류가 발생했습니다.'}, status=500)
+
 
     except json.JSONDecodeError:
         # 요청 본문이 유효한 JSON이 아닐 경우
         return JsonResponse({'success': False, 'message': '잘못된 요청 형식입니다 (JSON 오류).'}, status=400)
     except Exception as e:
-        # 기타 예외 처리
+        # 기타 예외 처리 (로그인 안 된 경우 등 @login_required 데코레이터에서 처리되지만, 안전상)
         print(f"API 오류: /api/trade/process_result/ - {e}") # 서버 로그에 기록
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'success': False, 'message': '서버 내부 오류가 발생했습니다.'}, status=500)
-
 
 
 
