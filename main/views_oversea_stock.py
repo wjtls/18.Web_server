@@ -29,7 +29,7 @@ import json
 
 # Create your views here.
 
-def get_price_file_path(symbol,minute): # 과거 가격 데이터 경로
+def get_price_file_path(symbol,minute): # 가격 데이터 경로
     # 현재 실행 중인 파일의 절대 경로
     current_file_path = os.path.abspath(__file__)
 
@@ -38,6 +38,21 @@ def get_price_file_path(symbol,minute): # 과거 가격 데이터 경로
 
     # 목표 파일 상대 경로
     relative_path = f'../../a_FRDdata_api/price_real_data/real_data_{symbol}_{minute}.json'
+
+    # 목표 파일 절대 경로 계산
+    absolute_path = os.path.abspath(os.path.join(current_dir, relative_path))
+
+    return absolute_path
+
+def get_past_price_file_path(symbol,minute, data_number): # 과거 가격 데이터 경로
+    # 현재 실행 중인 파일의 절대 경로
+    current_file_path = os.path.abspath(__file__)
+
+    # 현재 파일의 디렉토리 경로
+    current_dir = os.path.dirname(current_file_path)
+
+    # 목표 파일 상대 경로
+    relative_path = f'../../a_FRDdata_api/price_past_data/{symbol}/past_data_{symbol}_{minute}_{data_number}.json'
 
     # 목표 파일 절대 경로 계산
     absolute_path = os.path.abspath(os.path.join(current_dir, relative_path))
@@ -59,15 +74,22 @@ def get_news_file_path():
 
     return absolute_path
 
-def oversea_api222(request, minute, symbol, exchange_code):   # 가격 데이터 호출
-    path = get_price_file_path(symbol, minute)
-    with open(path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    data_res = data.get('response')  # 로드된 데이터 출력
-    data_list = data_res['data']
-    print(data_list,'@@@@@@@@@@@@@@@@@@@@@')
-    return JsonResponse({'status': True, 'response': {'data': data_list}}, status=200)
+def oversea_past_api(request, minute, symbol, data_number):   # 과거 데이터 호출
+    file_path_str = get_past_price_file_path(symbol, minute, data_number)
 
+    # 파일 존재 여부 확인 (프로덕션에서는 더 견고한 로깅 및 예외 처리 필요)
+    if not os.path.exists(file_path_str) or not os.path.isfile(file_path_str):
+        return JsonResponse({'status': False, 'message': f'Data file not found at the specified path: {file_path_str}'}, status=404)
+
+    with open(file_path_str, 'r', encoding='utf-8') as f:
+        # 생성된 JSON 파일은 바로 캔들 데이터 리스트임
+        candle_data_list = json.load(f)
+
+    # 데이터 형식 검증 (선택적이지만 권장)
+    if not isinstance(candle_data_list, list):
+        # 예상치 못한 파일 형식일 경우
+        return JsonResponse({'status': False, 'message': 'Invalid data format in the file.'}, status=500)
+    return JsonResponse({'status': True, 'response': {'data': candle_data_list}}, status=200)
 
 
 
@@ -147,6 +169,26 @@ def oversea_api(request, minute, symbol, exchange_code): # URL 패턴에 맞는 
     # finally: # 연결 풀을 사용하면 개별 연결을 닫을 필요 없음
     #     if redis_conn:
     #         # redis_conn.close() # 연결 풀 사용 시 close() 불필요
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
