@@ -77,6 +77,28 @@ def index3_strategy_(request): # 뷰 함수 이름은 실제 사용하는 것으
 def index4_user_market(request):
     return render(request,"main/index4_user_market.html")
 
+
+def marketing_page(request):
+    return render(request,"main/marketing_page.html")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def chat_return(request): #채팅을 리턴
     data = request.POST.get("message")
     print(data,'채팅창에 입력된 문자')

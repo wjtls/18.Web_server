@@ -129,7 +129,7 @@ def get_redis_connection():
 # >>> 캐싱 데코레이터 추가 <<<
 @cache_page(60 * 1) # 60초(1분) 동안 서버에 이 뷰의 응답을 캐싱
 @cache_control(public=True, max_age=60) # 브라우저에게도 60초 동안 캐싱 가능하다고 알림
-def oversea_api(request, minute, symbol, exchange_code): # URL 패턴에 맞는 파라미터 사용 (exchange_code 포함됨)
+def load_stock_coin_data(request, minute, symbol, exchange_code): # URL 패턴에 맞는 파라미터 사용 (exchange_code 포함됨)
     """Redis 리스트에서 주식/상품 데이터를 가져오는 뷰 함수 (동기)"""
     data_list = []
     redis_conn = None # finally 블록에서 사용하기 위해 미리 선언 (필수는 아님)
@@ -271,7 +271,7 @@ def oversea_NYSE_stock_list(request):
         #{'stockName': 'SPDR S&P 500 ETF Trust', 'itemCode': 'SPY', 'closePrice': 450.00, 'fluctuationsRatio': 0.5}, #close와 ratio는 실시간 현재 값
         #{'stockName': 'ProShares Ultra S&P500', 'itemCode': 'UPRO', 'closePrice': 50.00, 'fluctuationsRatio': -1.2},
         #{'stockName': 'Invesco QQQ Trust', 'itemCode': 'QQQ', 'closePrice': 370.00, 'fluctuationsRatio': 1.0},
-        {'stockName': 'ProShares Ultra QQQ', 'itemCode': 'TQQQ', 'closePrice': 100.00, 'fluctuationsRatio': 2.5},
+        {'stockName': 'NAS 3배 ETF / ProShares Ultra QQQ', 'itemCode': 'TQQQ', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'NYS'},
         #{'stockName': 'Apple Inc.', 'itemCode': 'AAPL', 'closePrice': 175.00, 'fluctuationsRatio': 0.3},
         #{'stockName': 'Amazon.com Inc.', 'itemCode': 'AMZN', 'closePrice': 120.00, 'fluctuationsRatio': -0.5},
         #{'stockName': 'Alphabet Inc. (GOOGL)', 'itemCode': 'GOOGL', 'closePrice': 2800.00, 'fluctuationsRatio': 1.5},
@@ -299,12 +299,11 @@ def oversea_AMEX_stock_list(request):
     ]
     return JsonResponse({'stocks': stocks})
 
-
-def oversea_stock_price(request,id):
-    url = "https://m.stock.naver.com/api/stock/"+id+"/askingPrice"
-    r = requests.get(url, headers={'Content-Type': 'application/json','User-Agent':'Guzzle HTTP Client'})
-    return HttpResponse(r)
-
+def coin_list(requset):
+    coins = [
+        {'stockName': 'BTC/USDT', 'itemCode': 'BTCUSDT', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'Binance'},
+    ]
+    return JsonResponse({'stocks': coins})
 
 
 
@@ -403,11 +402,6 @@ def total_time_Frame(data, minute,col_name):  # all data 분봉 출력( traning 
     res.columns= col_name
 
     return res
-
-def oversea_stock_basic(request,id):
-    url = "https://m.stock.naver.com/api/stock/"+id+"/basic"
-    r = requests.get(url, headers={'Content-Type': 'application/json','User-Agent':'Guzzle HTTP Client'})
-    return HttpResponse(r)
 
 
 
