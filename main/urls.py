@@ -51,6 +51,8 @@ urlpatterns = [
 
     # 코인 데이터
     path("coin_list/", views_stock_coin.coin_list, name="coin_list"),
+
+
     # 해외주식 데이터
     path("oversea_list/", views_stock_coin.oversea_stock_list, name="oversea_stock_list"),
     path("oversea_NASD_list/", views_stock_coin.oversea_NASD_stock_list, name="oversea_stock_NASD_list"),
@@ -64,7 +66,8 @@ urlpatterns = [
     path("index2_1", views_main.index2_1, name="index2_1_past_simulator"),
     path("index3", views_main.index3_strategy, name="index3_strategy"),
     path("index4", views_main.index4_user_market, name="index4_user_market"),
-    path("marketing_page", views_main.marketing_page, name="marketing_page"),
+    path("index5", views_main.index5_community, name="index5_community"),
+    path("marketing/", views_main.marketing_page, name="marketing_page"),
 
 
     #AI
@@ -75,6 +78,8 @@ urlpatterns = [
     path('api/trader4/data/', views_AI.AI_trader_4_get_data, name='ai_trader_4_data'),
     path('run_fin_RAG/', views_AI.AI_finance_RAG, name='ai_fin_rag'),
 
+    #시스템 (코인차감등)
+    path('api/trigger_coin_deduction/', views_main.trigger_coin_deduction_api, name='trigger_coin_deduction_api'),
 ]
 
 # 배포

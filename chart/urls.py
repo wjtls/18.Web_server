@@ -15,10 +15,16 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import include,path
+from django.urls import path, include
+from django.conf import settings # MEDIA 파일 서빙을 위해
+from django.conf.urls.static import static # MEDIA 파일 서빙을 위해
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path("",include("main.urls"))
+    path("",include("main.urls")),
+    path('community/', include('community.urls', namespace='community')), #커뮤니티 url
 ]
 
+# 개발 환경에서 사용자가 올린 미디어 파일(이미지 등)을 서빙하기 위한 설정
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

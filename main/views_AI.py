@@ -18,7 +18,7 @@ from django.shortcuts import render
 from datetime import datetime,timedelta
 
 
-
+limit_data_index = 1000
 
 def AI_finance_RAG(request):
     chat_history = []
@@ -83,14 +83,14 @@ def AI_trader_1_get_data(request):
 
     # DataFrame으로 변환
     df = pd.DataFrame(data)
-
     # 필요한 데이터 추출
     def extract_data(column_name):
         data = df.loc[df['index'] == column_name, '0'].values[0]['long']
 
         # 첫 번째 요소가 iterable한지 확인
-        return [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
-
+        res =[item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = res[-limit_data_index:]
+        return res
     pv_data = extract_data('PV_data') #PV 데이터
     pv_return_data = extract_data('PV_return_data') #PV누적수익률
     pv_log_return_data = extract_data('PV_log_return_data') # PV의 로그수익률
@@ -237,7 +237,9 @@ def AI_trader_2_get_data(request):
         data = df.loc[df['index'] == column_name, '0'].values[0]['long']
 
         # 첫 번째 요소가 iterable한지 확인
-        return [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = res[-limit_data_index:]
+        return res
 
     pv_data = extract_data('PV_data') #PV 데이터
     pv_return_data = extract_data('PV_return_data') #PV누적수익률
@@ -383,7 +385,9 @@ def AI_trader_3_get_data(request):
         data = df.loc[df['index'] == column_name, '0'].values[0]['long']
 
         # 첫 번째 요소가 iterable한지 확인
-        return [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = res[-limit_data_index:]
+        return res
 
     pv_data = extract_data('PV_data') #PV 데이터
     pv_return_data = extract_data('PV_return_data') #PV누적수익률
@@ -529,7 +533,9 @@ def AI_trader_4_get_data(request):
         data = df.loc[df['index'] == column_name, '0'].values[0]['long']
 
         # 첫 번째 요소가 iterable한지 확인
-        return [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = [item[0] if hasattr(item, '__iter__') and not isinstance(item, str) else item for item in data]
+        res = res[-limit_data_index:]
+        return res
 
     pv_data = extract_data('PV_data') #PV 데이터
     pv_return_data = extract_data('PV_return_data') #PV누적수익률

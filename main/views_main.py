@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 import requests
+from decimal import Decimal
 from django.shortcuts import render, redirect
 from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate # 자동 로그인을 위해 login 추가
@@ -10,9 +11,23 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from .models import StrategyPageSubscription # 모델 import
-
+from datetime import datetime
 #Holding/Trade 모델이 별도로 있다면 임포트
 from .models import Holding
+
+
+
+
+GUEST_MAX_USAGE_SECONDS = 1 * 60  # 비로그인 사용자 하루 최대 이용 시간 (1분)
+LOGGED_IN_USAGE_FEE = Decimal('0.1')  # 로그인 사용자 시간당 차감 코인
+LOGGED_IN_FEE_HOURS_INTERVAL = 1  # 코인 차감 간격 (시간 단위)
+
+
+
+
+
+
+
 
 def index(request):
     return render(request,"main/index_homepage.html")
@@ -48,35 +63,91 @@ def index2_simulator(request):
 def index2_1(request):
     return render(request,"main/index2_1_past_simulator.html")
 
+
+
 def index3_strategy(request):
-    return render(request,"main/index3_strategy.html")
+    now = timezone.now()
+    today_str = now.strftime('%Y-%m-%d')
+    context = {}
 
-@login_required # 로그인 필수
-def index3_strategy_(request): # 뷰 함수 이름은 실제 사용하는 것으로
-    user = request.user
-    # 현재 사용자가 활성화된(만료되지 않은) 전략 페이지 구독권을 가지고 있는지 확인
-    is_subscribed = StrategyPageSubscription.objects.filter(
-        subscriber=user,
-        expires_at__gt=timezone.now() # 현재 시간보다 만료 시간이 미래인 구독 조회
-    ).exists() # 하나라도 존재하면 True
+    if request.user.is_authenticated:
+        user = User.objects.get(pk=request.user.pk)
+        should_deduct_coin_on_load = False  # 페이지 로드 시 차감 여부
+        last_fee_time = user.last_strategy_page_fee_time
 
-    if not is_subscribed:
-        # 구독권이 없으면 마켓 페이지로 리다이렉트 (또는 에러 메시지 표시)
-        # from django.contrib import messages
-        # messages.warning(request, "전략 페이지 접근 권한이 없습니다. 마켓에서 구독권을 구매해주세요.")
-        return redirect('index4_user_market') # 마켓 페이지의 URL 이름 사용
+        if last_fee_time is None:
+            should_deduct_coin_on_load = True
+        else:
+            if (now - last_fee_time) >= timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL):
+                should_deduct_coin_on_load = True
 
-    # 구독 중인 사용자에게만 전략 페이지 보여주기
-    context = {
-        # ... 전략 페이지에 필요한 데이터 ...
-    }
-    return render(request, 'main/index3_strategy.html', context) # 실제 템플릿 경로 확인
+        if should_deduct_coin_on_load:
+            can_spend = user.spend_asi_coin(LOGGED_IN_USAGE_FEE)
+            if can_spend:
+                user.last_strategy_page_fee_time = now  # 차감 성공 시 시간 업데이트
+                user.save(update_fields=['last_strategy_page_fee_time'])
+                messages.success(request,f"{LOGGED_IN_USAGE_FEE} ASI 코인이 사용되었습니다. (현재 잔액: {user.asi_coin_balance.quantize(Decimal('0.0001'))})")
+                # last_fee_time을 현재 시간으로 갱신 (아래 다음 차감 시간 계산에 반영 위함)
+                last_fee_time = now
+            else:
+                messages.error(request, "ASI 코인이 부족합니다. 충전해주세요.")
+                try:
+                    marketing_url = reverse('marketing_page')
+                except Exception:
+                    marketing_url = '/default-marketing-url/'
+                context['show_charge_ASI_popup'] = True  # JS에서 이 값으로 팝업
+                context['marketing_page_url_for_popup'] = marketing_url
+                # 코인 부족 시에도 일단 페이지는 보여주고 JS가 팝업 처리
+                # (또는 여기서 바로 마케팅 페이지로 redirect 할 수도 있음)
 
+        # 다음 코인 차감까지 남은 시간 계산 (페이지 로드 시점 기준)
+        if last_fee_time:  # last_fee_time이 None이 아닐 경우 (즉, 한번이라도 유료 사용/차감된 경우)
+            next_deduction_time_obj = last_fee_time + timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL)
+            if next_deduction_time_obj > now:
+                context['time_until_next_deduction_seconds'] = (next_deduction_time_obj - now).total_seconds()
+            else:
+                # 이미 차감 시간이 지났거나 정확히 차감 시간이라면 (should_deduct_coin_on_load에서 처리되었을 것)
+                # 또는, 차감 후 바로 다음 차감 시간까지의 전체 간격을 전달
+                context['time_until_next_deduction_seconds'] = timedelta(
+                    hours=LOGGED_IN_FEE_HOURS_INTERVAL).total_seconds()
+        else:  # 완전 첫 사용이라 last_fee_time이 None인 경우 (위에서 should_deduct_coin_on_load로 차감 시도했을 것)
+            # 만약 위에서 차감 성공했다면 last_fee_time이 now로 설정되었을 것이므로, 이 else는 거의 실행 안됨.
+            # 혹시 모를 경우를 대비해, 첫 사용이고 아직 차감 전이라면 전체 시간으로 설정
+            context['time_until_next_deduction_seconds'] = timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL).total_seconds()
+
+        context['user_asi_coin_balance'] = user.asi_coin_balance.quantize(Decimal("0.0001"))
+        return render(request, "main/index3_strategy.html", context)
+
+    else:  # 비로그인 사용자 처리 (이전과 동일하게 유지, 단 JS에서 시간 초과 시 즉시 리디렉션 추가 가능)
+        session_key_first_visit_time_today = f'guest_first_visit_time_{today_str}'
+        if session_key_first_visit_time_today not in request.session:
+            request.session[session_key_first_visit_time_today] = now.isoformat()
+            print(f"비로그인 사용자 첫 방문 또는 날짜 변경: {today_str}. 세션 초기화.")
+
+        first_visit_time_iso = request.session[session_key_first_visit_time_today]
+        first_visit_time = datetime.fromisoformat(first_visit_time_iso)
+        current_total_usage_seconds = (now - first_visit_time).total_seconds()
+
+        print(f"비로그인 사용자: 오늘 사용 시간 {current_total_usage_seconds:.0f}초 / {GUEST_MAX_USAGE_SECONDS}초")
+
+        if current_total_usage_seconds >= GUEST_MAX_USAGE_SECONDS:
+            messages.info(request, "비로그인 사용자의 하루 무료 이용 시간이 모두 소진되었습니다. 로그인 후 계속 이용해주세요.")
+            try:
+                login_url = reverse('login')
+            except Exception:
+                login_url = '/login/'
+            return redirect(login_url)
+
+        remaining_time = GUEST_MAX_USAGE_SECONDS - current_total_usage_seconds
+        context['guest_remaining_time_seconds'] = max(0, remaining_time)
+        return render(request, "main/index3_strategy.html", context)
 
 
 def index4_user_market(request):
     return render(request,"main/index4_user_market.html")
 
+def index5_community(request):
+    return render(request,"main/index5_community.html")
 
 def marketing_page(request):
     return render(request,"main/marketing_page.html")
@@ -86,17 +157,63 @@ def marketing_page(request):
 
 
 
+# 코인차감 로직 (페이지 접속 시간 지나면)
+@login_required  # 이 API는 로그인한 사용자만 호출 가능
+def trigger_coin_deduction_api(request):
+    if request.method == 'POST':  # POST 요청만 처리 (CSRF 처리 필요할 수 있음)
+        user = User.objects.get(pk=request.user.pk)  # 최신 사용자 정보 가져오기
+        now = timezone.now()
 
+        # 코인 차감 조건 확인 (index3_strategy 뷰와 유사 로직)
+        should_deduct_coin_now = False
+        if user.last_strategy_page_fee_time is None:
+            should_deduct_coin_now = True
+        else:
+            if (now - user.last_strategy_page_fee_time) >= timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL):
+                should_deduct_coin_now = True
 
+        if not should_deduct_coin_now:
+            # 아직 차감 시간이 안 됐으면, 현재 상태만 반환 (또는 에러 메시지)
+            next_deduction_time = user.last_strategy_page_fee_time + timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL)
+            time_until_next = next_deduction_time - now
+            return JsonResponse({
+                'status': 'no_deduction_needed',
+                'message': '아직 코인 차감 시간이 아닙니다.',
+                'current_asi_coin_balance': str(user.asi_coin_balance.quantize(Decimal("0.0001"))),  # 소수점 4자리까지
+                'new_time_until_next_deduction_seconds': time_until_next.total_seconds() if time_until_next.total_seconds() > 0 else 0,
+            })
 
+        # 코인 차감 시도 (User.spend_asi_coin 메서드가 boolean만 반환한다고 가정)
+        can_spend = user.spend_asi_coin(LOGGED_IN_USAGE_FEE)
 
+        if can_spend:
+            user.last_strategy_page_fee_time = now
+            user.save(update_fields=['last_strategy_page_fee_time'])
 
+            new_next_deduction_time = now + timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL)
+            new_time_until_next_seconds = (new_next_deduction_time - now).total_seconds()
 
+            return JsonResponse({
+                'status': 'success',
+                'message': f"{LOGGED_IN_USAGE_FEE} ASI 코인이 사용되었습니다. (현재 잔액: {user.asi_coin_balance.quantize(Decimal('0.0001'))})",
+                'current_asi_coin_balance': str(user.asi_coin_balance.quantize(Decimal("0.0001"))),
+                'new_time_until_next_deduction_seconds': new_time_until_next_seconds,
+            })
+        else:  # 코인 부족
+            marketing_url = ''
+            try:
+                marketing_url = reverse('marketing_page')
+            except Exception:
+                marketing_url = '/default-marketing-page-if-url-fails/'
 
+            return JsonResponse({
+                'status': 'error',
+                'message': "ASI 코인이 부족합니다. 충전해주세요.",
+                'current_asi_coin_balance': str(user.asi_coin_balance.quantize(Decimal("0.0001"))),
+                'redirect_url_if_needed': marketing_url,  # 마케팅 페이지 URL 전달
+            }, status=400)  # 클라이언트 에러 상태 코드
 
-
-
-
+    return JsonResponse({'status': 'error', 'message': '잘못된 요청입니다.'}, status=405)  # POST 아니면 에러
 
 
 def chat_return(request): #채팅을 리턴
