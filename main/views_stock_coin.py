@@ -207,6 +207,12 @@ def oversea_news(request):
     return JsonResponse({'status': True, 'response': {'data': data_dict}}, status=200)
 
 
+def coin_list(requset):
+    coins = [
+        {'stockName': 'BTC/USDT', 'itemCode': 'BTCUSDT', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'Binance'},
+    ]
+    return JsonResponse({'stocks': coins})
+
 def oversea_stock_list(request): #전체
     stocks = [
 
@@ -299,11 +305,6 @@ def oversea_AMEX_stock_list(request):
     ]
     return JsonResponse({'stocks': stocks})
 
-def coin_list(requset):
-    coins = [
-        {'stockName': 'BTC/USDT', 'itemCode': 'BTCUSDT', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'Binance'},
-    ]
-    return JsonResponse({'stocks': coins})
 
 
 

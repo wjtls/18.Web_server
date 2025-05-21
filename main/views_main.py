@@ -12,9 +12,139 @@ from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 from .models import StrategyPageSubscription # 모델 import
 from datetime import datetime
+from django.urls import reverse
+import random
 #Holding/Trade 모델이 별도로 있다면 임포트
 from .models import Holding
 
+
+from django.shortcuts import render, redirect
+from django.contrib.auth import login
+from django.contrib import messages
+from django.utils.translation import gettext_lazy as _
+from django.http import JsonResponse # AJAX 뷰들에서 사용
+from django.views.decorators.http import require_POST, require_GET
+from django.utils import timezone
+from datetime import timedelta
+from django.conf import settings
+import json
+import random
+from django.core.cache import cache
+
+
+from .forms import NicknameChangeForm, PositionSharingForm
+
+from django.shortcuts import render,redirect
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_GET, require_POST
+
+from .forms import NICKNAME_BLACKLIST,UserRegistrationForm # 위에서 만든 폼
+from .models import User # 실제 User 모델 (get_user_model() 사용 권장)
+import json
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST # POST 요청만 허용
+from django.contrib.auth.decorators import login_required # 로그인된 사용자만 접근 허용
+from django.views.decorators.csrf import csrf_exempt # 주의해서 사용하거나 클라이언트에서 CSRF 처리 필요
+from django.contrib.auth import get_user_model # 또는 사용자 정의 User 모델 경로
+
+
+
+
+
+import json
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET # GET 요청만 허용
+from django.contrib.auth.decorators import login_required # 로그인된 사용자만 접근 허용
+from django.forms.models import model_to_dict # 모델 인스턴스를 딕셔너리로 변환
+# Traceback import (오류 로깅용)
+import traceback
+
+
+# User 모델 import
+from .models import User # 사용자 모델 import
+from django.contrib.auth import get_user_model
+
+
+
+
+import requests
+import json
+from django.conf import settings
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+
+
+###############아이템구매
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST # POST 요청만 받도록
+from django.views.decorators.csrf import csrf_exempt # 필요시 CSRF 예외 처리 (JS에서 토큰 보내는것 권장)
+from django.contrib.auth.decorators import login_required # 로그인 필수
+import json
+from decimal import Decimal, InvalidOperation
+from django.utils import timezone
+from datetime import timedelta
+from django.db import transaction
+from django.db.models import F # DB 업데이트 시 원자적 연산 지원
+from django.contrib.auth import get_user_model
+
+# --- ★★★ 서비스 함수 및 모델 Import (실제 경로로 수정 필수!) ★★★ ---
+# spend_asi_coin 함수가 정의된 파일 경로에서 import
+# 예: from chart.blockchain_reward import spend_asi_coin
+from chart.blockchain_reward import spend_asi_coin # 사용자가 chart 폴더 언급했으므로 임시 적용
+
+# User 모델 및 구독 모델 import (main 앱의 models.py 에 있다고 가정)
+# User는 get_user_model() 사용, 구독 모델은 .models 에서 가져오기
+from main.models import StrategyPageSubscription, PositionViewSubscription
+
+
+
+
+# view_main.py
+
+# ... 필요한 import (json, Decimal, transaction, User 등) ...
+from decimal import Decimal, InvalidOperation
+from django.db import transaction
+from django.db.models import F
+import traceback
+
+# User 모델 import (네 models.py에 정의된 User 모델 정확히 import)
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+# TODO: StrategyPageSubscription, PositionViewSubscription, UserTitle 등 모델 import (models.py에 있다면)
+from main.models import StrategyPageSubscription, PositionViewSubscription # 예시 import (실제 모델 위치에 맞게)
+# TODO: UserTitle 모델 import (models.py에 있다면)
+
+
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST # POST 요청만 받도록
+from django.views.decorators.csrf import ensure_csrf_cookie # CSRF 처리 관련 (필요시)
+from django.contrib.auth.decorators import login_required
+from chart.blockchain_reward import process_trade_result # 코인 보상 업데이트
+
+
+
+# 예시: your_app_name/views.py
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required
+import json
+from decimal import Decimal, InvalidOperation # Decimal 및 오류 처리 import
+
+# initiate_onchain_withdrawal 함수 import (★ 실제 경로 확인 및 수정 필요 ★)
+# 예: from your_project_name.blockchain_service import initiate_onchain_withdrawal
+from chart.blockchain_service import initiate_onchain_withdrawal # 임시 경로
+
+
+# views.py (예시: index2_simulator_page 뷰)
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+import json
+from django.contrib.auth import get_user_model
+from .models import Holding # 모델 임포트 가정
 
 
 
@@ -23,14 +153,120 @@ LOGGED_IN_USAGE_FEE = Decimal('0.1')  # 로그인 사용자 시간당 차감 코
 LOGGED_IN_FEE_HOURS_INTERVAL = 1  # 코인 차감 간격 (시간 단위)
 
 
-
-
-
-
-
-
 def index(request):
-    return render(request,"main/index_homepage.html")
+    register_form_instance = UserRegistrationForm()
+    show_register_modal_on_error = False
+
+    if request.method == 'POST':
+        if 'register_submit' in request.POST:  # 회원가입 폼 제출 확인
+            print("[INDEX_VIEW] Register form POST 요청 받음")
+            register_form_instance = UserRegistrationForm(request.POST)
+
+            is_form_valid = register_form_instance.is_valid()
+            print(f"[INDEX_VIEW] register_form.is_valid() 결과: {is_form_valid}")
+
+            if is_form_valid:
+                print("[INDEX_VIEW] Register 폼 유효성 검사 1차 통과!")
+
+                # --- 1. 재가입 방지 로직 (사용자 이름 기준) ---
+                username_to_check = register_form_instance.cleaned_data.get('username')
+                # 휴대폰 번호로도 체크하려면:
+                # phone_to_check = register_form_instance.cleaned_data.get('phone_number')
+
+                # is_active=False 인 사용자 중에서 username (또는 phone_number)으로 찾아봄
+                # User 모델에 date_deactivated, can_rejoin_at 필드가 있어야 함
+                deactivated_user = User.objects.filter(username__iexact=username_to_check, is_active=False).first()
+                # 또는 phone_number로 체크:
+                # deactivated_user_by_phone = User.objects.filter(phone_number=phone_to_check, is_active=False).first()
+                # if not deactivated_user and deactivated_user_by_phone:
+                #     deactivated_user = deactivated_user_by_phone
+
+                can_proceed_after_rejoin_check = True  # 다음 단계로 진행 가능 여부 플래그
+
+                if deactivated_user and hasattr(deactivated_user,
+                                                'can_rejoin_at') and deactivated_user.can_rejoin_at and timezone.now() < deactivated_user.can_rejoin_at:
+                    print(f"[INDEX_VIEW] !!! 재가입 불가 사용자: {username_to_check} !!!")
+                    # timezone.localtime()으로 사용자 지역 시간으로 변환 (settings.TIME_ZONE 기준)
+                    rejoin_time_local = timezone.localtime(deactivated_user.can_rejoin_at)
+                    time_left_str = rejoin_time_local.strftime('%Y년 %m월 %d일 %H시 %M분')
+
+                    # 폼 전체에 대한 오류(non-field error)로 추가
+                    register_form_instance.add_error(None, _("이전에 탈퇴한 계정입니다. %(rejoin_time)s 이후에 재가입할 수 있습니다.") % {
+                        'rejoin_time': time_left_str})
+                    messages.error(request, _("이전에 탈퇴한 계정입니다. 안내된 시간 이후에 재가입해주세요."))
+                    show_register_modal_on_error = True
+                    can_proceed_after_rejoin_check = False
+
+                if can_proceed_after_rejoin_check:
+                    # --- 2. 휴대폰 인증 상태 최종 확인 ---
+                    verified_phone_in_session = request.session.get('phone_verified_for_registration')
+                    submitted_phone_number = register_form_instance.cleaned_data.get('phone_number')
+                    print(f"[INDEX_VIEW] 세션 내 인증된 폰: '{verified_phone_in_session}', 제출된 폰: '{submitted_phone_number}'")
+
+                    if not verified_phone_in_session or verified_phone_in_session != submitted_phone_number:
+                        print("[INDEX_VIEW] !!! 휴대폰 인증 실패 또는 불일치 (in index_view) !!!")
+                        register_form_instance.add_error('phone_number', _('휴대폰 인증을 먼저 완료해주세요. (인증된 번호와 다를 수 있습니다)'))
+                        messages.error(request, _('휴대폰 인증 정보가 올바르지 않습니다. 다시 시도해주세요.'))
+                        show_register_modal_on_error = True
+                    else:
+                        # --- 3. 모든 검증 통과, 사용자 저장 시도 ---
+                        print("[INDEX_VIEW] 휴대폰 인증 검증 통과 (in index_view)!")
+                        try:
+                            print("[INDEX_VIEW] register_form.save(commit=False) 실행 시도...")
+                            user = register_form_instance.save(commit=False)
+                            print(f"[INDEX_VIEW] User 객체 생성됨: {user.username}")
+
+                            user.phone_number = submitted_phone_number  # 폼에서 받은 인증된 번호로 최종 설정
+                            user.phone_verified = True  # User 모델에 이 필드가 있다고 가정
+                            print("[INDEX_VIEW] User 객체에 phone_number, phone_verified 설정 완료.")
+
+                            # user.is_active는 UserRegistrationForm.save()에서 True로 설정되거나 모델 기본값 사용
+
+                            print("[INDEX_VIEW] user.save() 실행 시도 (DB에 최종 저장)...")
+                            user.save()  # UserRegistrationForm의 save 메서드에서 초기값 등 설정됨
+                            print("[INDEX_VIEW] user.save() 성공! DB에 사용자 저장 완료.")
+
+                            request.session.pop('phone_verified_for_registration', None)
+                            print("[INDEX_VIEW] 세션에서 phone_verified_for_registration 삭제 완료.")
+
+                            login(request, user)
+                            print(f"[INDEX_VIEW] 사용자 {user.username} 자동 로그인 성공.")
+                            messages.success(request, _(f'{user.username}님, 회원가입이 완료되었습니다! ASI 플랫폼에 오신 것을 환영합니다.'))
+                            print("[INDEX_VIEW] 회원가입 성공! index 페이지로 리디렉션.")
+                            return redirect('index')
+
+                        except Exception as e:
+                            print(f"[INDEX_VIEW] !!! user.save() 또는 login 중 예외 발생: {e} !!!")
+                            import traceback
+                            traceback.print_exc()
+                            messages.error(request, _('회원가입 처리 중 오류가 발생했습니다. 관리자에게 문의해주세요.'))
+                            show_register_modal_on_error = True
+
+            # 이 else는 if register_form_instance.is_valid(): 의 else 입니다.
+            # 또는, 위의 if can_proceed_after_rejoin_check: 나 if (휴대폰인증): 의 else 에서
+            # show_register_modal_on_error = True 가 설정되었다면 여기까지 올 수 있습니다.
+            if not register_form_instance.is_valid() or register_form_instance.errors:  # 폼 자체 유효성 오류 또는 수동 추가된 오류가 있다면
+                if not show_register_modal_on_error:  # 위에서 messages.error를 이미 찍지 않은 경우
+                    messages.error(request, _('입력하신 정보를 다시 확인해주세요.'))
+                show_register_modal_on_error = True
+                print("[INDEX_VIEW] !!! Register 폼 유효성 검사 실패 또는 추가 검증 실패 !!!")
+                if register_form_instance.errors:
+                    print("[INDEX_VIEW] Register 폼 오류 내용:")
+                    for field, errors_list in register_form_instance.errors.items():
+                        for error in errors_list:
+                            print(f"  - 필드 '{field if field != '__all__' else 'Non-field'}': {error}")
+
+        # elif 'login_submit' in request.POST:
+        # ... 로그인 폼 처리 로직 ...
+
+    # GET 요청 또는 POST 처리 후 (성공 시 리디렉션, 실패 시 아래로 내려와서 다시 렌더링)
+    context = {
+        'register_form': register_form_instance,
+        'show_register_modal_on_error': show_register_modal_on_error,
+        # 'login_form': login_form_instance,
+        # ... index_homepage.html에 필요한 다른 모든 컨텍스트 변수들 ...
+    }
+    return render(request, "main/index_homepage.html", context)
 
 def index2_simulator_backup(request):
     return render(request,"main/index2_simulator.html")
@@ -65,86 +301,239 @@ def index2_1(request):
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def index3_strategy(request):
     now = timezone.now()
-    today_str = now.strftime('%Y-%m-%d')
+    today_str = now.strftime('%Y-%m-%d')  # 비로그인 사용자 일일 사용량 체크용
     context = {}
 
     if request.user.is_authenticated:
-        user = User.objects.get(pk=request.user.pk)
-        should_deduct_coin_on_load = False  # 페이지 로드 시 차감 여부
-        last_fee_time = user.last_strategy_page_fee_time
+        # Django의 request.user는 이미 현재 로그인된 User 모델의 인스턴스입니다.
+        # 따라서 User.objects.get(pk=request.user.pk)는 보통 필요 없습니다.
+        user = request.user
 
-        if last_fee_time is None:
+        # --- 사용자의 구독 플랜 확인 ---
+        is_premium_user = (user.subscription_plan == '프리미엄')  # 구독플랜에 따라 숨김처리함(index3 에서)
+        is_basic_or_higher_subscriber = user.subscription_plan in ['베이직', '스탠다드', '프리미엄']
+        if is_basic_or_higher_subscriber:
+            LOGGED_IN_USAGE_FEE = Decimal('0.0') # 무료등급이 아니면(구독상태면) 코인 차감 x
+        else:
+            LOGGED_IN_USAGE_FEE = Decimal('0.0') # 무료등급인경우 (코인차감)
+        context['is_premium_user'] = is_premium_user
+
+        # --- 베이직 등급 이상 접근 가능 로직 (만약 이 페이지 자체가 특정 등급 이상만 접근 가능하다면) ---
+        # 예시: if user.subscription_plan not in ['BASIC', 'STANDARD', 'PREMIUM']:
+        #           messages.error(request, "AI 트레이더 페이지는 베이직 등급 이상부터 접근 가능합니다.")
+        #           return redirect('some_subscription_info_page_url_name')
+
+        # --- 기존 코인 차감 로직 (페이지 로드 시) ---
+        should_deduct_coin_on_load = False
+        last_fee_time = user.last_strategy_page_fee_time  # User 모델에 이 필드가 있다고 가정
+
+        if last_fee_time is None:  # 첫 방문 또는 요금 정책 변경 후 첫 방문
             should_deduct_coin_on_load = True
         else:
             if (now - last_fee_time) >= timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL):
                 should_deduct_coin_on_load = True
 
         if should_deduct_coin_on_load:
-            can_spend = user.spend_asi_coin(LOGGED_IN_USAGE_FEE)
+
+            original_balance = user.asi_coin_balance  # 차감 전 잔액 (선택적 로깅용)
+            if hasattr(user, 'spend_asi_coin') and callable(user.spend_asi_coin):
+                can_spend = user.spend_asi_coin(LOGGED_IN_USAGE_FEE)  # User 모델의 메서드 사용
+            else:  # 만약 spend_asi_coin 메서드가 없다면 직접 처리 (이전 코드 참고)
+                if user.asi_coin_balance >= LOGGED_IN_USAGE_FEE:
+                    user.asi_coin_balance -= LOGGED_IN_USAGE_FEE
+                    can_spend = True
+                else:
+                    can_spend = False
+
             if can_spend:
                 user.last_strategy_page_fee_time = now  # 차감 성공 시 시간 업데이트
-                user.save(update_fields=['last_strategy_page_fee_time'])
-                messages.success(request,f"{LOGGED_IN_USAGE_FEE} ASI 코인이 사용되었습니다. (현재 잔액: {user.asi_coin_balance.quantize(Decimal('0.0001'))})")
-                # last_fee_time을 현재 시간으로 갱신 (아래 다음 차감 시간 계산에 반영 위함)
-                last_fee_time = now
+                # spend_asi_coin 메서드가 잔액 변경 후 save를 안했다면, 여기서 함께 저장
+                user.save(update_fields=['asi_coin_balance', 'last_strategy_page_fee_time'])
+                messages.success(request,
+                                 _(f"{LOGGED_IN_USAGE_FEE} ASI 코인이 사용되었습니다. (현재 잔액: {user.asi_coin_balance.quantize(Decimal('0.0001'))})"))
+                last_fee_time = now  # 다음 시간 계산을 위해 업데이트
             else:
-                messages.error(request, "ASI 코인이 부족합니다. 충전해주세요.")
-                try:
-                    marketing_url = reverse('marketing_page')
-                except Exception:
-                    marketing_url = '/default-marketing-url/'
-                context['show_charge_ASI_popup'] = True  # JS에서 이 값으로 팝업
-                context['marketing_page_url_for_popup'] = marketing_url
-                # 코인 부족 시에도 일단 페이지는 보여주고 JS가 팝업 처리
-                # (또는 여기서 바로 마케팅 페이지로 redirect 할 수도 있음)
+                if not is_basic_or_higher_subscriber:
+                    messages.error(request, _("ASI 코인이 부족합니다. 3일 무료 체험을 하시려면 카드를 등록해주세요."))
+                    try:
+                        add_card_page_url = reverse('add_card')  # <<< 카드 등록 페이지 URL로 변경
+                    except Exception:
+                        add_card_page_url = '/payment/add-card/'
+                    context['show_charge_ASI_popup'] = True
+                    context['marketing_page_url_for_popup'] = add_card_page_url
 
-        # 다음 코인 차감까지 남은 시간 계산 (페이지 로드 시점 기준)
-        if last_fee_time:  # last_fee_time이 None이 아닐 경우 (즉, 한번이라도 유료 사용/차감된 경우)
+                messages.error(request, _("ASI 코인이 부족합니다. 충전해주세요."))
+                from django.urls import reverse, NoReverseMatch
+                try:
+                    marketing_url = reverse('index4_user_market')
+                    print(f"[INDEX3_STRATEGY] 성공적으로 URL 리버스: 'index4_user_market' -> '{marketing_url}'")
+                except NoReverseMatch as e:  # NoReverseMatch 오류를 구체적으로 잡음
+                    print(f"[INDEX3_STRATEGY] !!! NoReverseMatch 오류 발생 ('index4_user_market'): {e} !!!")
+                    marketing_url = '/index4/'  #
+                except Exception as e:  # 그 외 다른 예외
+                    print(f"[INDEX3_STRATEGY] !!! 'index4_user_market' 리버스 중 기타 예외 발생: {e} !!!")
+                    marketing_url = '/index4/'  # f
+
+                context['show_charge_ASI_popup'] = True  # JavaScript에서 이 값으로 팝업 제어
+                context['marketing_page_url_for_popup'] = marketing_url
+
+        # 다음 코인 차감까지 남은 시간 계산
+        if last_fee_time:
             next_deduction_time_obj = last_fee_time + timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL)
             if next_deduction_time_obj > now:
                 context['time_until_next_deduction_seconds'] = (next_deduction_time_obj - now).total_seconds()
-            else:
-                # 이미 차감 시간이 지났거나 정확히 차감 시간이라면 (should_deduct_coin_on_load에서 처리되었을 것)
-                # 또는, 차감 후 바로 다음 차감 시간까지의 전체 간격을 전달
+            else:  # 이미 차감 시간이 지났거나 정확히 차감 시간
                 context['time_until_next_deduction_seconds'] = timedelta(
                     hours=LOGGED_IN_FEE_HOURS_INTERVAL).total_seconds()
-        else:  # 완전 첫 사용이라 last_fee_time이 None인 경우 (위에서 should_deduct_coin_on_load로 차감 시도했을 것)
-            # 만약 위에서 차감 성공했다면 last_fee_time이 now로 설정되었을 것이므로, 이 else는 거의 실행 안됨.
-            # 혹시 모를 경우를 대비해, 첫 사용이고 아직 차감 전이라면 전체 시간으로 설정
+        else:
+            # 첫 사용이고, 코인이 부족해서 위에서 차감이 안됐다면 last_fee_time은 여전히 None
+            # 이 경우, 다음에 올바른 시간 표시를 위해 전체 간격으로 설정 (또는 0으로 설정하여 즉시 API 호출 유도)
             context['time_until_next_deduction_seconds'] = timedelta(hours=LOGGED_IN_FEE_HOURS_INTERVAL).total_seconds()
 
         context['user_asi_coin_balance'] = user.asi_coin_balance.quantize(Decimal("0.0001"))
-        return render(request, "main/index3_strategy.html", context)
 
-    else:  # 비로그인 사용자 처리 (이전과 동일하게 유지, 단 JS에서 시간 초과 시 즉시 리디렉션 추가 가능)
+        # --- AI 트레이더 리스트 및 각 트레이더의 수익률 정보 등 context에 추가 ---
+        # 예시: context['traders_summary'] = get_traders_summary_for_template(user, is_premium_user)
+        # 이 함수는 각 트레이더의 기본 정보와 함께, 프리미엄이 아니면 "실시간 포지션 값" 등을
+        # 모자이크 처리된 값이나 플레이스홀더로 설정해서 반환할 수 있습니다.
+        # (이 부분은 실제 데이터 구조와 로직에 따라 구현 필요)
+
+    else:  # 비로그인 사용자 처리
         session_key_first_visit_time_today = f'guest_first_visit_time_{today_str}'
+
         if session_key_first_visit_time_today not in request.session:
             request.session[session_key_first_visit_time_today] = now.isoformat()
+            # request.session.set_expiry(timedelta(days=1)) # 세션 만료 설정 (선택 사항)
             print(f"비로그인 사용자 첫 방문 또는 날짜 변경: {today_str}. 세션 초기화.")
 
-        first_visit_time_iso = request.session[session_key_first_visit_time_today]
-        first_visit_time = datetime.fromisoformat(first_visit_time_iso)
-        current_total_usage_seconds = (now - first_visit_time).total_seconds()
+        first_visit_time_iso = request.session.get(session_key_first_visit_time_today)  # .get() 사용
+        if not first_visit_time_iso:  # 혹시 세션 값이 없을 경우 대비 (거의 발생 안 함)
+            request.session[session_key_first_visit_time_today] = now.isoformat()
+            first_visit_time_iso = now.isoformat()
 
+        first_visit_time = datetime.fromisoformat(first_visit_time_iso)
+        # first_visit_time이 naive이면 aware로 변환 (settings.USE_TZ=True일 경우 now는 aware)
+        if timezone.is_naive(first_visit_time) and timezone.is_aware(now):
+            first_visit_time = timezone.make_aware(first_visit_time, timezone.get_default_timezone())
+
+        current_total_usage_seconds = (now - first_visit_time).total_seconds()
         print(f"비로그인 사용자: 오늘 사용 시간 {current_total_usage_seconds:.0f}초 / {GUEST_MAX_USAGE_SECONDS}초")
 
         if current_total_usage_seconds >= GUEST_MAX_USAGE_SECONDS:
-            messages.info(request, "비로그인 사용자의 하루 무료 이용 시간이 모두 소진되었습니다. 로그인 후 계속 이용해주세요.")
+            messages.info(request, _("비로그인 사용자의 하루 무료 이용 시간이 모두 소진되었습니다. 로그인 후 계속 이용해주세요."))
             try:
-                login_url = reverse('login')
+                # allauth를 사용 중이라면 account_login이 일반적
+                login_url = reverse('account_login')  # 또는 직접 정의한 'login' URL 이름
             except Exception:
-                login_url = '/login/'
+                login_url = '/accounts/login/'  # 또는 실제 로그인 페이지 경로
             return redirect(login_url)
 
         remaining_time = GUEST_MAX_USAGE_SECONDS - current_total_usage_seconds
         context['guest_remaining_time_seconds'] = max(0, remaining_time)
-        return render(request, "main/index3_strategy.html", context)
+        # 비로그인 사용자에게도 is_premium_user는 False로 전달 (템플릿에서 분기 처리 위함)
+        context['is_premium_user'] = False
+
+    return render(request, "main/index3_strategy.html", context)
 
 
+
+
+try:
+    from payments.models import UserPaymentMethod # payments 앱의 모델이라고 가정
+    from .models import Title
+except ImportError:
+    UserPaymentMethod = None
+    print("경고: payments.models에서 UserPaymentMethod를 찾을 수 없습니다. (index4_user_market)")
+
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+@login_required
 def index4_user_market(request):
-    return render(request,"main/index4_user_market.html")
+    user = request.user
+    has_payment_method = False
+    payment_method_details_for_template = None
+
+    if UserPaymentMethod:
+        try:
+            payment_info = UserPaymentMethod.objects.get(user=user, is_default=True)
+            if payment_info and payment_info.pg_customer_id:
+                has_payment_method = True
+                payment_method_details_for_template = {
+                    'brand': payment_info.card_brand,
+                    'last4': payment_info.last4
+                }
+        except UserPaymentMethod.DoesNotExist:
+            pass
+        except AttributeError:
+            pass
+
+    # 구독 플랜 정보 (실제로는 DB 또는 설정에서 관리)
+    plans_info_for_template = [
+        {'id': 'basic', 'name_kr': '베이직', 'price_krw': 3900, 'currency': 'KRW', 'description_key': 'plan_basic_desc'},
+        {'id': 'standard', 'name_kr': '스탠다드', 'price_krw': 6900, 'currency': 'KRW', 'description_key': 'plan_standard_desc'},
+        {'id': 'premium', 'name_kr': '프리미엄', 'price_krw': 19900, 'currency': 'KRW', 'description_key': 'plan_premium_desc'},
+    ]
+
+    # 상점 아이템 정보 (현금 가격은 data-* 속성 또는 여기서 전달)
+    # 실제 아이템 정보는 DB에서 가져오는 것이 좋습니다.
+    shop_items_for_template = [
+        {'id': 'cash_refill', 'name_kr': '모의투자 머니 초기화', 'price_asi': 10, 'price_cash': 10000, 'currency': 'KRW', 'description_key': 'item_cash_refill_desc'},
+        {'id': 'asi_refill', 'name_kr': 'ASI 코인 충전', 'price_cash_per_unit': 1000, 'currency': 'KRW', 'description_key': 'item_asi_refill_desc'}, # 수량 기반
+        {'id': 'wl_reset', 'name_kr': '승패 초기화', 'price_asi': 4, 'price_cash': 4000, 'currency': 'KRW', 'description_key': 'item_wl_reset_desc'},
+        {'id': 'nickname_color', 'name_kr': '닉네임 색상 변경권', 'price_asi': 1, 'price_cash': 1000, 'currency': 'KRW', 'description_key': 'item_nickname_color_desc'},
+        {'id': 'level_xp_1000', 'name_kr': '레벨 경험치 +1000', 'price_asi': Decimal('0.1'), 'price_cash': 100, 'currency': 'KRW', 'description_key': 'item_level_xp_1000_desc'},
+        # ... 기타 아이템들 ...
+    ]
+
+    purchasable_titles_list = []  # 기본 빈 리스트
+    if Title:  # Title 모델이 import 되었을 때만 실행
+        purchasable_titles_list = Title.objects.filter(is_purchasable=True).order_by('order')
+        print(f"DEBUG [views.py - index4]: 조회된 purchasable_titles 목록: {list(purchasable_titles_list)}")
+        print(f"DEBUG [views.py - index4]: 조회된 purchasable_titles 개수: {len(purchasable_titles_list)}")
+    else:
+        print("DEBUG [views.py - index4]: Title 모델을 찾을 수 없어 칭호 목록을 가져오지 못했습니다.")
+
+
+    context = {
+        'user_is_authenticated_js': True,
+        'has_payment_method_js': has_payment_method,
+        'payment_method_details_for_template': payment_method_details_for_template,
+
+        'add_card_url_js': reverse('payments:add_card'), # payments 앱 네임스페이스 사용 가정
+        'create_subscription_url_js': reverse('payments:create_subscription'),
+        'charge_item_card_url_js': reverse('payments:charge_item_card'),
+        'purchase_item_asi_url_js': reverse('purchase_item_api'), # 기존 ASI 코인 결제 API URL
+
+        'iamport_store_id_js': getattr(settings, 'IAMPORT_STORE_ID', ''),
+        'plans_info_for_template': plans_info_for_template,
+        'shop_items_for_template': shop_items_for_template,
+
+        'purchasable_titles': purchasable_titles_list,  # 조회한 칭호 목록을 context에 추가
+        'N_DAYS_FREE_TRIAL': getattr(settings, 'N_DAYS_FREE_TRIAL', 3),  # 템플릿에서 사용하므로 추가
+
+    }
+    return render(request, 'main/index4_user_market.html', context)
 
 def index5_community(request):
     return render(request,"main/index5_community.html")
@@ -222,70 +611,99 @@ def chat_return(request): #채팅을 리턴
     return HttpResponse(data)
 
 
-from django.shortcuts import render, redirect
-from django.contrib import messages
-# from django.contrib.auth.hashers import make_password # create_user 사용 시 필요 없음
-from .models import User # 사용자 모델 import
+# register_view가 모달이 포함된 페이지(예: index_homepage.html)를 렌더링할 때 필요한
+# 다른 컨텍스트 변수들을 가져오는 함수가 있다면 여기서 호출하거나,
+# index_view에서 POST를 처리하는 것이 더 나을 수 있습니다.
+# def get_common_context_for_index_page(request):
+#     return { ... }
+
 
 def register_view(request):
-    """
-    회원가입 요청을 처리하는 뷰 함수 (POST 요청만 처리)
-    """
+    template_name_with_modal = "main/index_homepage.html"
+
+    print("\n" + "=" * 50)  # 요청 시작 구분선
+    print(f"[REGISTER_VIEW] 현재 요청 메소드: {request.method}")
+
     if request.method == 'POST':
-        # 폼에서 데이터 가져오기
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        confirm_password = request.POST.get('confirm_password')
-        terms_accepted = request.POST.get('terms_accepted')
+        print("[REGISTER_VIEW] POST 요청 진입")
+        form = UserRegistrationForm(request.POST)
 
-        # 1. 필수 항목 검사
-        if not all([username, password, confirm_password]):
-            messages.error(request, '모든 필수 항목을 입력해주세요.')
-            return redirect('_register_modal.html')
+        is_form_valid = form.is_valid()
+        print(f"[REGISTER_VIEW] form.is_valid() 호출 결과: {is_form_valid}")
 
-        # 2. 비밀번호 일치 확인
-        if password != confirm_password:
-            messages.warning(request, '비밀번호가 일치하지 않습니다.')
-            return redirect('_register_modal.html')
+        if is_form_valid:
+            print("[REGISTER_VIEW] 폼 유효성 검사 통과!")
 
-        # 3. 약관 동의 확인
-        if terms_accepted != 'true':
-            messages.warning(request, '이용약관 및 개인정보처리방침에 동의해야 합니다.')
-            return redirect('_register_modal.html')
+            verified_phone_in_session = request.session.get('phone_verified_for_registration')
+            submitted_phone_number = form.cleaned_data.get('phone_number')
+            print(f"[REGISTER_VIEW] 세션 내 인증된 폰: '{verified_phone_in_session}', 제출된 폰: '{submitted_phone_number}'")
 
-        # 4. 기존 사용자 확인
-        if User.objects.filter(username=username).exists():
-            messages.warning(request, '이미 사용 중인 사용자 이름입니다.')
-            return redirect('_register_modal.html')
+            if not verified_phone_in_session or verified_phone_in_session != submitted_phone_number:
+                print("[REGISTER_VIEW] !!! 휴대폰 인증 실패 또는 불일치 !!!")
+                form.add_error('phone_number', _('휴대폰 인증을 먼저 완료해주세요. (인증된 번호와 다를 수 있습니다)'))
+                messages.error(request, _('휴대폰 인증 정보가 올바르지 않습니다. 다시 시도해주세요.'))
+                # 오류가 있는 폼으로 다시 렌더링 (아래 공통 부분에서 처리)
+            else:
+                print("[REGISTER_VIEW] 휴대폰 인증 검증 통과!")
+                try:
+                    print("[REGISTER_VIEW] form.save(commit=False) 실행 시도...")
+                    user = form.save(commit=False)
+                    print(f"[REGISTER_VIEW] form.save(commit=False) 실행 완료. User 객체 생성됨: {user.username}")
 
-        # 5. 새 사용자 생성 (create_user 사용)
-        # User.objects.create_user() 사용: 비밀번호 해싱 및 저장을 자동으로 처리
-        new_user = User.objects.create_user(
-            username=username,
-            password=password, # 원본 비밀번호 전달
-            # --- 추가 필드 값 설정 ---
-            cash = 1000000,
-            portfolio_value = 1000000,
-            level_xp = 0.0,
-            user_tier = "Bronze",
-            real_cash = 0,  # 진짜 돈
-            # otp_secret 설정 등 필요시 추가
-        )
-        # create_user는 객체를 생성하고 바로 save()까지 호출
-        # 따라서 new_user.save() 를 별도로 호출할 필요가 없음
+                    user.phone_number = submitted_phone_number
+                    user.phone_verified = True
+                    print(f"[REGISTER_VIEW] User 객체에 phone_number, phone_verified 설정 완료.")
 
-        messages.success(request, f'{username}님, 회원가IP 성공! 로그인해주세요.')
+                    print("[REGISTER_VIEW] user.save() 실행 시도 (DB에 최종 저장)...")
+                    user.save()
+                    print("[REGISTER_VIEW] user.save() 성공! DB에 사용자 저장 완료.")
+
+                    request.session.pop('phone_verified_for_registration', None)
+                    print("[REGISTER_VIEW] 세션에서 phone_verified_for_registration 삭제 완료.")
+
+                    login(request, user)
+                    print(f"[REGISTER_VIEW] 사용자 {user.username} 자동 로그인 성공.")
+                    messages.success(request, _(f'{user.username}님, 회원가입이 완료되었습니다! ASI 플랫폼에 오신 것을 환영합니다.'))
+                    print("[REGISTER_VIEW] 회원가입 성공! index 페이지로 리디렉션.")
+                    return redirect('index')
+
+                except Exception as e:
+                    print(f"[REGISTER_VIEW] !!! user.save() 또는 login 중 예외 발생: {e} !!!")
+                    import traceback
+                    traceback.print_exc()  # 예외의 상세 내용 출력
+                    messages.error(request, _('회원가입 처리 중 오류가 발생했습니다. 관리자에게 문의해주세요.'))
+                    # form.add_error(None, _('알 수 없는 오류로 가입에 실패했습니다.')) # 이미 form 객체가 아닐 수 있음
+                    # 오류 발생 시에도 폼 정보를 포함하여 페이지를 다시 렌더링할 수 있도록 context 구성
+                    # 이 경우의 form은 is_valid()를 통과한 상태의 form.
+                    context = {
+                        'register_form': form,
+                        'show_register_modal_on_error': True,
+                    }
+                    return render(request, template_name_with_modal, context)
+        else:  # form.is_valid()가 False인 경우
+            print("[REGISTER_VIEW] !!! 폼 유효성 검사 실패 !!!")
+            print("[REGISTER_VIEW] 폼 오류 내용:")
+            # 폼 오류를 보기 쉽게 출력
+            for field, errors in form.errors.items():
+                print(f"  - 필드 '{field}': {', '.join(errors)}")
+
+            messages.error(request, _('입력하신 정보를 다시 확인해주세요.'))
+            context = {
+                'register_form': form,
+                'show_register_modal_on_error': True,
+            }
+            return render(request, template_name_with_modal, context)
+
+    # GET 요청 시
+    else:
+        print("[REGISTER_VIEW] GET 요청 받음. 빈 폼으로 모달을 띄우기 위해 index로 리디렉션 (또는 index 뷰에서 빈 폼 전달).")
+        # 이 뷰가 직접 빈 폼을 렌더링하려면 아래 주석 해제 및 수정
+        # form = UserRegistrationForm()
+        # context = {'register_form': form}
+        # return render(request, template_name_with_modal, context)
         return redirect('index')
 
 
-    # POST 요청이 아닐 경우 (예: 직접 /register/ URL로 접근 시도)
-    # 보통 회원가입 폼을 보여주는 GET 요청 처리가 필요하지만,
-    # 모달 형태라면 그냥 메인 페이지로 보내는 것이 자연스러울 수 있습니다.
-    return redirect('index')
-
-
-from django.shortcuts import render,redirect
-from django.contrib.auth.decorators import login_required
 
 @login_required
 def profile(request):
@@ -293,18 +711,136 @@ def profile(request):
     return redirect('index')
 
 
+# --- 닉네임 중복 및 금칙어 확인 AJAX 뷰 ---
+@require_GET
+def check_nickname_view(request):
+    nickname = request.GET.get('nickname')
+
+    if not nickname:
+        return JsonResponse({'status': 'error', 'message': _('닉네임을 입력해주세요.')}, status=400)
+
+    # 이제 forms.py에서 가져온 NICKNAME_BLACKLIST를 사용합니다.
+    for forbidden_word in NICKNAME_BLACKLIST:
+        if forbidden_word.lower() in nickname.lower():
+            return JsonResponse({'status': 'unavailable', 'message': _('선택하신 닉네임에는 사용할 수 없는 단어가 포함되어 있습니다: %(word)s') % {'word': forbidden_word}})
+
+    if User.objects.filter(nickname__iexact=nickname).exists():
+        return JsonResponse({'status': 'unavailable', 'message': _('이미 사용 중인 닉네임입니다.')})
+
+    return JsonResponse({'status': 'available', 'message': _('사용 가능한 닉네임입니다.')})
+
+@require_GET
+def check_username_view(request):
+    username = request.GET.get('username')
+    if not username:
+        return JsonResponse({'status': 'error', 'message': _('아이디를 입력해주세요.')}, status=400)
+
+    # User 모델의 username 필드는 unique=True이므로, 이 검사가 핵심입니다.
+    if User.objects.filter(username__iexact=username).exists(): # iexact: 대소문자 구분 없이 정확히 일치
+        return JsonResponse({'status': 'unavailable', 'message': _('이미 사용 중인 아이디입니다.')})
+    else:
+        # 여기에 추가적인 아이디 형식 유효성 검사를 넣을 수 있습니다.
+        # (예: Django User 모델의 기본 username validator 규칙 - 영문, 숫자, @/./+/-/_ 만 허용 등)
+        # from django.contrib.auth.validators import UnicodeUsernameValidator
+        # username_validator = UnicodeUsernameValidator()
+        # try:
+        #     username_validator(username)
+        # except forms.ValidationError as e:
+        #     return JsonResponse({'status': 'invalid', 'message': '; '.join(e.messages)})
+        return JsonResponse({'status': 'available', 'message': _('사용 가능한 아이디입니다.')})
 
 
 
 
+# --- 휴대폰 인증번호 발송 AJAX 뷰 ---
+@require_POST  # 보안상 POST가 더 적절
+def send_otp_view(request):
+    try:
+        data = json.loads(request.body)
+        phone_number = data.get('phone_number')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': _('잘못된 요청 형식입니다.')}, status=400)
+
+    if not phone_number:  # TODO: 휴대폰 번호 형식 검증 추가
+        return JsonResponse({'status': 'error', 'message': _('휴대폰 번호를 올바르게 입력해주세요.')}, status=400)
+
+    # TODO: 특정 번호/IP로 단시간 내 너무 많은 요청 제한 (Rate Limiting)
+    # 예: 1분에 1회, 10분에 3회 등
+
+    otp_code = str(random.randint(100000, 999999))
+    otp_key_code = f"otp_code_{phone_number}"
+    otp_key_expiry = f"otp_expiry_{phone_number}"
+    otp_key_try_count = f"otp_try_count_{phone_number}"  # 인증 시도 횟수 키
+
+    # 캐시 또는 세션에 OTP와 유효 시간(예: 3분) 저장
+    cache.set(otp_key_code, otp_code, timeout=180)  # OTP 코드, 180초
+    cache.set(otp_key_expiry, (timezone.now() + timedelta(minutes=3)).isoformat(), timeout=185)  # 만료 시간, 약간 더 길게
+    cache.set(otp_key_try_count, 0, timeout=185)  # 시도 횟수 초기화
+
+    # TODO: 실제 SMS 발송 로직 구현 (외부 API 연동)
+    # from .sms_services import send_sms_message # 예시
+    # sms_sent = send_sms_message(phone_number, f"[ASI플랫폼] 인증번호: {otp_code} 유효시간 3분.")
+    sms_sent = True  # 임시로 성공 처리
+    print(f"Sending OTP: {otp_code} to {phone_number}")  # 개발 중 콘솔 출력
+
+    if sms_sent:
+        return JsonResponse({'status': 'success', 'message': _('인증번호가 발송되었습니다.')})
+    else:
+        return JsonResponse({'status': 'error', 'message': _('SMS 발송에 실패했습니다. 잠시 후 다시 시도해주세요.')})
 
 
-import json
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST # POST 요청만 허용
-from django.contrib.auth.decorators import login_required # 로그인된 사용자만 접근 허용
-from django.views.decorators.csrf import csrf_exempt # 주의해서 사용하거나 클라이언트에서 CSRF 처리 필요
-from django.contrib.auth import get_user_model # 또는 사용자 정의 User 모델 경로
+# --- 휴대폰 인증번호 확인 AJAX 뷰 ---
+@require_POST
+def verify_otp_view(request):
+    try:
+        data = json.loads(request.body)
+        phone_number = data.get('phone_number')
+        otp_received = data.get('otp')
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': _('잘못된 요청 형식입니다.')}, status=400)
+
+    if not phone_number or not otp_received:
+        return JsonResponse({'status': 'error', 'message': _('휴대폰 번호와 인증번호를 모두 입력해주세요.')}, status=400)
+
+    otp_key_code = f"otp_code_{phone_number}"
+    otp_key_expiry = f"otp_expiry_{phone_number}"
+    otp_key_try_count = f"otp_try_count_{phone_number}"
+
+    stored_otp_code = cache.get(otp_key_code)
+    stored_expiry_str = cache.get(otp_key_expiry)
+    try_count = cache.get(otp_key_try_count, 0)
+
+    # 최대 시도 횟수 제한 (예: 5회)
+    MAX_OTP_TRY_COUNT = 5
+    if try_count >= MAX_OTP_TRY_COUNT:
+        return JsonResponse({'status': 'error', 'message': _('인증 시도 횟수를 초과했습니다. 잠시 후 다시 시도해주세요.')})
+
+    if stored_otp_code and stored_expiry_str:
+        stored_expiry = timezone.datetime.fromisoformat(stored_expiry_str)
+        if timezone.now() > stored_expiry:
+            # 만료된 경우
+            cache.delete(otp_key_code)
+            cache.delete(otp_key_expiry)
+            cache.delete(otp_key_try_count)
+            return JsonResponse({'status': 'error', 'message': _('인증 시간이 만료되었습니다.')})
+
+        if stored_otp_code == otp_received:
+            # 인증 성공
+            cache.delete(otp_key_code)  # 성공 시 OTP 삭제 (재사용 방지)
+            cache.delete(otp_key_expiry)
+            cache.delete(otp_key_try_count)
+            request.session['phone_verified_for_registration'] = phone_number  # 세션에 인증된 번호 저장
+            return JsonResponse({'status': 'success', 'message': _('인증에 성공했습니다.')})
+        else:
+            # 인증 실패
+            cache.set(otp_key_try_count, try_count + 1,
+                      timeout=(stored_expiry - timezone.now()).total_seconds())  # 남은 시간동안 유효
+            return JsonResponse({'status': 'error', 'message': _('인증번호가 올바르지 않습니다.')})
+    else:
+        # OTP가 없거나 만료 정보가 없는 경우 (비정상)
+        return JsonResponse({'status': 'error', 'message': _('인증번호를 다시 요청해주세요.')})
+
+
 
 User = get_user_model() # 현재 활성화된 User 모델 가져오기
 
@@ -481,23 +1017,6 @@ def update_portfolio_api(request):
 
 
 
-
-
-
-
-
-import json
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET # GET 요청만 허용
-from django.contrib.auth.decorators import login_required # 로그인된 사용자만 접근 허용
-from django.forms.models import model_to_dict # 모델 인스턴스를 딕셔너리로 변환
-# Traceback import (오류 로깅용)
-import traceback
-
-
-# User 모델 import
-from .models import User # 사용자 모델 import
-from django.contrib.auth import get_user_model
 User = get_user_model()
 
 # Holding, Trade 모델 import (네 models.py에 정의되어 있어야 함)
@@ -612,19 +1131,6 @@ def load_portfolio_api(request):
 
 
 
-
-
-
-
-
-
-
-
-import requests
-import json
-from django.conf import settings
-from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
 # --- !!! 경고: 절대 경로 사용 !!! ---
 PARAMS_FILE_PATH = r"D:\AI_pycharm\pythonProject\3_AI_LLM_finance\a_korea_invest_api_env\secret_data\params.py"
 # ------------------------------------
@@ -745,622 +1251,14 @@ def get_websocket_key_api(request): # ★ 키 발급 전용 API 뷰 ★
 
 
 
-###############아이템구매
 
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST # POST 요청만 받도록
-from django.views.decorators.csrf import csrf_exempt # 필요시 CSRF 예외 처리 (JS에서 토큰 보내는것 권장)
-from django.contrib.auth.decorators import login_required # 로그인 필수
-import json
-from decimal import Decimal, InvalidOperation
-from django.utils import timezone
-from datetime import timedelta
-from django.db import transaction
-from django.db.models import F # DB 업데이트 시 원자적 연산 지원
-from django.contrib.auth import get_user_model
 
-# --- ★★★ 서비스 함수 및 모델 Import (실제 경로로 수정 필수!) ★★★ ---
-# spend_asi_coin 함수가 정의된 파일 경로에서 import
-# 예: from chart.blockchain_reward import spend_asi_coin
-from chart.blockchain_reward import spend_asi_coin # 사용자가 chart 폴더 언급했으므로 임시 적용
 
-# User 모델 및 구독 모델 import (main 앱의 models.py 에 있다고 가정)
-# User는 get_user_model() 사용, 구독 모델은 .models 에서 가져오기
-from main.models import StrategyPageSubscription, PositionViewSubscription
 
-User = get_user_model()
-# --------------------------------------------------------------------
 
-@login_required
-@require_POST
-@csrf_exempt # JavaScript에서 CSRF 토큰을 헤더에 포함하여 보내는 경우 이 줄은 주석 처리하거나 삭제
-def purchase_item_api_view22(request):
-    """
-    ASI Coin 상점 아이템 구매 요청을 처리하고,
-    (필요시) 코인 차감 성공 시 각 아이템의 효과를 적용하는 API 뷰. (가격 0 처리 포함)
-    """
-    print("\n[DEBUG] ===== purchase_item_api_view 시작 =====")
-    try:
-        # 요청 본문에서 JSON 데이터 파싱
-        data = json.loads(request.body)
-        item_id = data.get('item_id') # 프론트엔드에서 보낸 구매할 아이템의 ID
-        user = request.user         # 요청을 보낸 로그인된 사용자
-        user_id = user.id
 
-        # 아이템 정보 (가격, 이름 등) - DB나 설정 파일 권장
-        # ★★★ 무료 아이템은 가격을 Decimal("0") 으로 설정 ★★★
-        items_info = {
-            'cash_refill': {'price': Decimal("0"), 'name': "머니 충전"},
-            'level_xp_1000': {'price': Decimal("0"), 'name': "레벨 경험치 +1000"},
-            'nickname_color': {'price': Decimal("0"), 'name': "닉네임 색상 변경권"},
-            'view_trader': {'price': Decimal("0"), 'name': "트레이더 포지션 보기 (1주일)"},
-            'strategy_page_sub': {'price': Decimal("0"), 'name': "전략 페이지 접근권 (1주일)"},
-            'auto_trade_10h': {'price': Decimal("0"), 'name': "자동매매 시간 충전 (10시간)"},
-            # 'free_sample': {'price': Decimal("0"), 'name': "무료 샘플"}, # 가격 0 예시
-        }
 
-        # 요청된 item_id 유효성 확인
-        if item_id not in items_info:
-             return JsonResponse({'success': False, 'message': '알 수 없는 아이템입니다.'}, status=400)
 
-        item_info = items_info[item_id]
-        item_price = item_info['price'] # Decimal 타입 가격
-        item_name = item_info['name']
-
-        # --- 가격 확인 및 코인 사용(필요시) / 효과 적용 진행 여부 결정 ---
-        proceed_to_action = False # 효과 적용 단계 진행 플래그
-
-        if item_price == Decimal("0"):
-            # 가격 0 (무료): 코인 차감 없이 바로 진행
-            print(f"로그: 아이템 '{item_name}' (ID: {item_id}) - 무료 아이템")
-            proceed_to_action = True
-        elif item_price > Decimal("0"):
-            # 가격 > 0 (유료): 코인 사용(차감) 시도
-            print(f"로그: 아이템 '{item_name}' (ID: {item_id}) - {item_price} ASI 차감 시도.")
-            if spend_asi_coin(user_id, item_price, item_name):
-                print(f"로그: 사용자 {user_id} 코인 차감 성공.")
-                proceed_to_action = True # 코인 차감 성공
-            else:
-                # spend_asi_coin 실패 (잔액 부족 등)
-                print(f"로그: 사용자 {user_id} 코인 차감 실패 (잔액 부족 등).")
-                return JsonResponse({'success': False, 'message': '코인 잔액이 부족하거나 코인 사용 중 오류가 발생했습니다.'}, status=400)
-        else:
-             # 가격 < 0 (오류)
-             print(f"오류: 아이템 '{item_name}' (ID: {item_id}) 가격 음수: {item_price}")
-             return JsonResponse({'success': False, 'message': '아이템 가격이 유효하지 않습니다.'}, status=500)
-
-        print(f"[DEBUG] 아이템 효과 적용 단계 진입 직전, proceed_to_action = {proceed_to_action}")
-
-        # --- 아이템 효과 적용 (proceed_to_action 이 True 일 때만) ---
-        if proceed_to_action:
-            action_success = False # 효과 적용 성공 플래그
-            result_message = ""    # 성공 메시지
-
-            try:
-                # DB 업데이트 관련 로직은 트랜잭션으로 묶어 원자성 보장
-                with transaction.atomic():
-                    # 최신 사용자 정보 로드 (락 설정)
-                    user = User.objects.select_for_update().get(pk=user_id)
-
-                    # --- 각 아이템 ID 별 효과 처리 ---
-                    if item_id == 'cash_refill':
-                        user.cash = 1000000.0
-                        user.save(update_fields=['cash'])
-                        action_success = True
-                        result_message = "모의투자 머니가 1,000,000으로 초기화되었습니다."
-
-                    elif item_id == 'level_xp_1000':
-                        user.level_xp = F('level_xp') + 1000.0
-                        user.save(update_fields=['level_xp'])
-                        action_success = True
-                        result_message = "레벨 경험치 1000이 추가되었습니다."
-                        # TODO: 레벨업 로직 호출
-
-                    elif item_id == 'nickname_color':
-                        selected_color = data.get('color') # ★ JS에서 전달 필요 ★
-                        if not selected_color or not isinstance(selected_color, str) or not selected_color.startswith('#') or len(selected_color) != 7:
-                            raise ValueError("올바른 색상 코드(#RRGGBB)가 필요합니다.")
-                        user.nickname_color = selected_color
-                        user.save(update_fields=['nickname_color'])
-                        action_success = True
-                        result_message = f"닉네임 색상이 {selected_color}로 변경되었습니다."
-
-                    elif item_id == 'strategy_page_sub':
-                        # TODO: 중복/연장 정책 구현 가능성
-                        StrategyPageSubscription.objects.create(subscriber=user)
-                        action_success = True
-                        result_message = "전략 페이지 접근권(7일)이 활성화되었습니다."
-
-                    elif item_id == 'view_trader':
-                        target_user_id = data.get('target_user_id') # ★ JS에서 전달 필요 ★
-                        if not target_user_id: raise ValueError("구독 대상 트레이더 ID가 필요합니다.")
-                        try:
-                            target_trader = User.objects.get(pk=target_user_id, position_sharing_enabled=True)
-                            if user.id == target_trader.id: raise ValueError("자기 자신을 구독할 수 없습니다.")
-                            # TODO: 중복/연장 정책 구현 가능성
-                            PositionViewSubscription.objects.create(subscriber=user, target_trader=target_trader)
-                            action_success = True
-                            result_message = f"{target_trader.username}님 포지션 구독(7일)이 시작되었습니다."
-                        except User.DoesNotExist:
-                            raise ValueError("구독 대상 트레이더를 찾을 수 없거나 비공개 상태입니다.")
-
-                    elif item_id == 'auto_trade_10h':
-                        seconds_to_add = 10 * 60 * 60
-                        user.auto_trade_seconds_remaining = F('auto_trade_seconds_remaining') + seconds_to_add
-                        user.save(update_fields=['auto_trade_seconds_remaining'])
-                        action_success = True
-                        user.refresh_from_db() # 시간 표시 위해
-                        result_message = f"자동매매 시간이 10시간 충전되었습니다. (현재 약 {user.auto_trade_seconds_remaining // 3600} 시간)"
-
-                    else:
-                         # items_info에는 있지만 로직이 없는 경우 (개발 중 실수)
-                         raise NotImplementedError(f"아이템 ID '{item_id}' 효과 처리 로직이 없습니다.")
-
-                # --- 최종 결과 반환 (아이템 효과 적용 결과 기준) ---
-                if action_success:
-                     user.refresh_from_db() # 최종 DB 잔액 확인 위해
-                     return JsonResponse({
-                         'success': True,
-                         'message': result_message or f"'{item_name}' 구매/획득/사용 완료!",
-                         'new_balance': user.asi_coin_balance # 프론트엔드 잔액 업데이트용
-                     })
-                else:
-                     # 위 로직 문제로 action_success가 설정 안 된 경우 등
-                     # transaction.atomic에 의해 롤백됨
-                     return JsonResponse({'success': False, 'message': '아이템 효과 적용에 실패했습니다.'}, status=500) # 서버 내부 오류
-
-            except Exception as e: # 아이템 효과 적용 중 예외 발생 (ValueError, DB Error 등)
-                print(f"오류: 아이템 효과 적용 실패 ({item_id}) - {e}")
-                # transaction.atomic 이 DB 변경사항 롤백
-                return JsonResponse({'success': False, 'message': f"'{item_name}' 효과 적용 중 오류 발생: {e}"}, status=500)
-        # proceed_to_action 이 False인 경우는 이미 위에서 처리됨
-
-    # --- 최외곽 에러 처리 ---
-    except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'message': '잘못된 요청 형식입니다.'}, status=400)
-    except Exception as e:
-        print(f"API 오류 (/api/shop/purchase/): {e}") # 상세 오류 서버 로그에 기록
-        return JsonResponse({'success': False, 'message': '서버 내부 오류가 발생했습니다.'}, status=500)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# view_main.py
-
-# ... 필요한 import (json, Decimal, transaction, User 등) ...
-from decimal import Decimal, InvalidOperation
-from django.db import transaction
-from django.db.models import F
-import traceback
-
-# User 모델 import (네 models.py에 정의된 User 모델 정확히 import)
-from django.contrib.auth import get_user_model
-User = get_user_model()
-
-# TODO: StrategyPageSubscription, PositionViewSubscription, UserTitle 등 모델 import (네 models.py에 있다면)
-from main.models import StrategyPageSubscription, PositionViewSubscription # 예시 import (네 실제 모델 위치에 맞게)
-# TODO: UserTitle 모델 import (네 models.py에 있다면)
-
-
-# TODO: spend_asi_coin 함수가 User 모델 메서드로 구현되어 있어야 함
-# 이 함수는 user 객체 (락 걸린), 차감할 Decimal 금액, 아이템 이름 받음.
-# asi_coin_balance 필드가 DecimalField여야 정확하며, 실제 ASI 출금 연동 로직이 포함되어야 함.
-# 성공 시 True, 잔액 부족 또는 오류 시 False 반환.
-# 예시 (User 모델 메서드로 정의되어 있다고 가정):
-# def spend_asi_coin(self, amount: Decimal, item_name=""): ...
-
-
-# TODO: Real Cash 가격 1 ASI = 1000 KRW (고정 환율 가정)
-# 실제 환경에서는 이 가격이 변동될 수 있으며, 별도 시스템에서 관리/계산되어야 함.
-# 이 상수는 view_main.py 파일의 맨 위나 설정 파일에 정의되어 있어야 함.
-ASI_KRW_RATE = Decimal("1000.0")
-
-
-@login_required
-@require_POST
-@csrf_exempt # JavaScript에서 CSRF 토큰을 헤더에 포함하여 보내는 경우 이 줄은 주석 처리하거나 삭제
-def purchase_item_api_view(request):
-    """
-    ASI Coin 상점 아이템 구매 요청을 처리하고, 결제 방식에 따라
-    real_cash, 모의투자 현금, 또는 ASI 코인을 차감하며 아이템 효과를 적용하는 API 뷰.
-    가격은 백엔드에 하드코딩된 값을 사용합니다.
-    """
-    print("\n[DEBUG] ===== purchase_item_api_view 시작 =====")
-    try:
-        # 1. 요청 본문에서 JSON 데이터 파싱
-        data = json.loads(request.body)
-        item_id = data.get('item_id') # 구매할 아이템의 ID (프론트엔드에서 받음)
-        payment_method = data.get('payment_method') # 결제 방식 ('asi', 'cash', 'sim_cash') (프론트엔드에서 받음)
-        purchase_quantity = data.get('quantity') # ASI 코인 충전 등 수량 (프론트엔드에서 받음)
-        selected_color = data.get('color') # 닉네임 색상 변경 시 (프론트엔드에서 받음)
-        target_user_id = data.get('target_user_id') # 트레이더 포지션 보기 등 (프론트엔드에서 받음)
-        strategy_id = data.get('strategy_id') # 전략 구독 시 (프론트엔드에서 받음)
-        profit_ratio = data.get('profit_ratio') # 수익률 비례 결제 시 수익률 (프론트엔드에서 받음)
-
-        user = request.user # 요청을 보낸 로그인된 사용자
-        user_id = user.id
-
-        print(f"로그: 사용자 {user.username} 아이템 구매 요청 수신 - Item ID: {item_id}, 결제 방식: {payment_method}")
-        print(f"로그: 수량: {purchase_quantity}, 색상: {selected_color}, 대상ID: {target_user_id}, 전략ID: {strategy_id}, 수익률: {profit_ratio}")
-
-
-        # 2. 아이템 정보 및 백엔드 가격 정의 (★★★ 보안 핵심: 가격은 여기에 정의!) ★★★
-        # price는 Decimal 타입으로 정확하게 정의.
-        # cost_type: 'cash' (real_cash 차감), 'asi' (asi_coin_balance 차감), 'sim_cash' (user.cash 차감)
-        items_info = {
-            'cash_refill': {'cost_type': 'cash', 'price': Decimal("10000.0"), 'name': "모의투자 머니 초기화"},
-            'cash_refill': {'cost_type': 'asi', 'price': Decimal("1.0"), 'name': "모의투자 머니 초기화"},
-            'level_xp_1000': {'cost_type': 'cash', 'price': Decimal("100.0"), 'name': "레벨 경험치 +1000"},
-            'wl_reset': {'cost_type': 'cash', 'price': Decimal("4000.0"), 'name': "승패 초기화"},
-            'nickname_color': {'cost_type': 'cash', 'price': Decimal("1000.0"), 'name': "닉네임 색상 변경권"},
-            'profile_cosmetic': {'cost_type': 'cash', 'price': Decimal("5000.0"), 'name': "프로필 꾸미기"}, # 예시 가격
-            # ASI 코인 충전: 가격은 수량*1000원, 현금 결제. price는 None으로 정의하고 로직에서 계산.
-            'asi_refill': {'cost_type': 'cash', 'price': None, 'name': "ASI 코인 충전"},
-            # 칭호 구매: 모의투자 현금 결제, 레벨 제한. price는 모의투자 현금 가격.
-            'title_purchase': {'cost_type': 'sim_cash', 'price': Decimal("1000000.0"), 'name': "칭호 구매", 'level_required': 5},
-            # ASI 코인 결제 아이템들 (현금 결제 옵션도 있으면 cost_type/price 쌍 추가)
-            'view_trader': {'cost_type': 'asi', 'price': Decimal("100.0"), 'name': "트레이더 포지션 보기 (1주일)"}, # 현금 결제 옵션 추가 가능
-            'strategy_page_sub': {'cost_type': 'asi', 'price': Decimal("100.0"), 'name': "AI 트레이더 구독 (1주일)"}, # 현금 결제 옵션 추가 가능
-            'auto_trade_10h': {'cost_type': 'asi', 'price': Decimal("1.0"), 'name': "자동매매 시간 충전 (10시간)"}, # 현금 결제 옵션 추가 가능
-            # 수익률 비례 결제: 가격은 동적 계산, 결제 방식은 프론트에서 지정
-            'strategy_sub_profit': {'cost_type': 'dynamic', 'name': "전략 구독 (수익률 비례)", 'asi_rate_per_percent': Decimal("1.0"), 'cash_rate_per_percent': ASI_KRW_RATE}, # 수익률 1%당 1 ASI, 1%당 1000원
-        }
-
-        # 3. 요청된 item_id 유효성 확인 및 기본 정보 가져오기
-        if item_id not in items_info:
-             print(f"오류: 사용자 {user.username} - 알 수 없는 아이템 ID 수신: {item_id}")
-             return JsonResponse({'success': False, 'message': '알 수 없는 아이템입니다.'}, status=400)
-
-        item_info = items_info[item_id]
-        item_name = item_info['name']
-        backend_cost_type_definition = item_info.get('cost_type') # 백엔드에 정의된 결제 타입 (dynamic일 수 있음)
-        backend_fixed_price = item_info.get('price')         # 백엔드에 정의된 고정 가격 (None일 수 있음)
-
-
-        # --- 4. 결제 방식 및 아이템 ID에 따른 실제 차감 금액 결정 및 차감 시도 ---
-        amount_to_deduct = Decimal("0.0") # 실제로 차감될 금액
-        actual_cost_type_used = None     # 실제로 어떤 잔액에서 차감했는지 기록
-        deduction_success = False        # 차감 성공 여부
-
-        # DB 업데이트 및 차감은 원자적 트랜잭션으로 묶음
-        try:
-            with transaction.atomic():
-                # 사용자 객체 최신 상태 로드 및 락 설정 (DB에서 데이터를 가져옴)
-                user_locked = User.objects.select_for_update().get(pk=user_id)
-
-                # === 아이템 ID 및 결제 방식에 따른 가격 결정 및 차감 로직 ===
-
-                # --- ASI 코인 충전 (asi_refill) ---
-                if item_id == 'asi_refill':
-                    if payment_method != 'cash':
-                         raise ValueError(f"'{item_name}' 아이템은 현금으로만 구매 가능합니다.")
-                    if purchase_quantity is None or not isinstance(purchase_quantity, int) or purchase_quantity <= 0:
-                         raise ValueError("올바른 코인 충전 수량(정수, 1 이상)이 필요합니다.")
-
-                    amount_to_deduct = Decimal(str(purchase_quantity)) * ASI_KRW_RATE # KRW 가격 계산
-                    actual_cost_type_used = 'cash' # 실제 차감은 현금
-
-                    # 현금 차감 시도 (User 모델 메서드 사용)
-                    if not user_locked.spend_real_cash(amount_to_deduct):
-                         raise ValueError("현금 잔액이 부족하거나 결제 중 오류가 발생했습니다.")
-
-                    # 차감 성공 시, 사용자 ASI 코인 잔액 증가
-                    user_locked.asi_coin_balance += Decimal(str(purchase_quantity))
-                    user_locked.save(update_fields=['asi_coin_balance']) # ASI 잔액 변경사항 저장
-                    deduction_success = True
-                    result_message = f"ASI 코인 {purchase_quantity}개가 충전되었습니다!"
-
-
-                # --- 칭호 구매 (title_purchase) ---
-                elif item_id == 'title_purchase':
-                    if payment_method != 'sim_cash':
-                        raise ValueError(f"'{item_name}' 아이템은 모의투자 현금으로만 구매 가능합니다.")
-                    # 레벨 제한 확인 (User 모델의 @property 사용)
-                    level_required = item_info.get('level_required', 0)
-                    if user_locked.current_level < level_required:
-                         raise ValueError(f"레벨 {level_required} 이상만 구매 가능합니다. (현재 레벨: {user_locked.current_level})")
-
-                    amount_to_deduct = backend_fixed_price # 모의투자 현금 가격
-                    actual_cost_type_used = 'sim_cash' # 실제 차감은 모의 현금
-
-                    # 모의 현금 차감 시도 (User 모델 메서드 사용)
-                    if not user_locked.spend_sim_cash(amount_to_deduct):
-                         raise ValueError("모의투자 현금이 부족하거나 구매 중 오류가 발생했습니다.")
-
-                    # TODO: 사용자에게 칭호 부여 로직 구현 (UserTitle 모델 등)
-                    # UserTitle.objects.create(user=user_locked, title='구매한칭호') # 예시
-
-                    deduction_success = True
-                    result_message = f"'{item_name}' 칭호를 획득했습니다!"
-
-
-                # --- 전략 구독 (수익률 비례) (strategy_sub_profit) ---
-                elif item_id == 'strategy_sub_profit':
-                     # 복잡한 로직: 가격 계산 -> 차감 -> 구독 활성화
-                     # 프론트에서 전략 ID와 수익률 정보를 받아야 함.
-                     if not strategy_id: raise ValueError("구독할 전략 ID가 필요합니다.")
-                     if profit_ratio is None or not isinstance(profit_ratio, (int, float)): raise ValueError("유효한 수익률 정보가 필요합니다.")
-
-                     profit_ratio_decimal = Decimal(str(profit_ratio)) # Decimal로 변환
-
-                     # TODO: 백엔드에서 해당 전략의 실제 수익률 다시 검증하는 로직 추가 권장
-                     # actual_strategy_profit_ratio = get_strategy_profit(strategy_id) # 백엔드 함수 가정
-                     # if abs(profit_ratio_decimal - actual_strategy_profit_ratio) > Decimal("0.01"): # 허용 오차 설정
-                     #     raise ValueError("전략 수익률 정보가 일치하지 않습니다. 다시 시도해주세요.")
-
-                     # 가격 계산 (수익률 1%당 1 ASI 또는 1000원)
-                     asi_rate_per_percent = item_info.get('asi_rate_per_percent', Decimal("0"))
-                     cash_rate_per_percent = item_info.get('cash_rate_per_percent', Decimal("0"))
-
-
-                     if payment_method == 'asi':
-                          # 가격 in ASI = 수익률(소수점) * 100 * ASI_rate_per_percent
-                          amount_to_deduct = profit_ratio_decimal * Decimal("100.0") * asi_rate_per_percent # ASI 단위 계산
-                          actual_cost_type_used = 'asi'
-                          # ASI 코인 차감 시도
-                          if not user_locked.spend_asi_coin(amount_to_deduct, item_name):
-                              raise ValueError("ASI 코인 잔액이 부족합니다.")
-                          # TODO: 실제 출금 트랜잭션 해시 기록/조회 로직 추가
-                          # tx_hash = ...
-
-                     elif payment_method == 'cash':
-                          # 가격 in KRW = 수익률(소수점) * 100 * cash_rate_per_percent
-                          amount_to_deduct = profit_ratio_decimal * Decimal("100.0") * cash_rate_per_percent # KRW 단위 계산
-                          actual_cost_type_used = 'cash'
-                           # 현금 차감 시도
-                          if not user_locked.spend_real_cash(amount_to_deduct):
-                              raise ValueError("현금 잔액이 부족합니다.")
-                     else:
-                         raise ValueError("알 수 없는 결제 방식입니다.")
-
-                     # TODO: 전략 구독 활성화 로직 구현 (StrategySubscription 모델 등)
-                     # StrategySubscription.objects.create(subscriber=user_locked, strategy_id=strategy_id, end_date=timezone.now() + timedelta(days=7)) # 예시
-
-                     deduction_success = True
-                     result_message = f"'{item_name}' 구독 완료! ({amount_to_deduct:.2f} {'ASI' if payment_method == 'asi' else 'KRW'} 차감)" # 메시지 동적 표시
-
-
-                # --- 그 외 모든 표준 아이템 (고정 가격, cash 또는 asi 결제) ---
-                else: # item_id가 위 특별 케이스가 아닌 경우
-                     if backend_cost_type_definition is None or backend_fixed_price is None:
-                          raise ValueError(f"'{item_name}' 아이템의 가격 정보가 불완전합니다.")
-
-                     # 요청된 결제 방식이 백엔드에 정의된 타입과 일치하는지 확인
-                     if payment_method != backend_cost_type_definition:
-                         raise ValueError(f"'{item_name}' 아이템은 '{backend_cost_type_definition}' 결제만 지원합니다.")
-
-
-                     amount_to_deduct = backend_fixed_price # 백엔드에 정의된 고정 가격 사용
-                     actual_cost_type_used = backend_cost_type_definition # 사용된 결제 타입
-
-                     if actual_cost_type_used == 'cash':
-                         # 현금 차감 시도 (User 모델 메서드 사용)
-                         if not user_locked.spend_real_cash(amount_to_deduct):
-                             raise ValueError("현금 잔액이 부족합니다.")
-                         deduction_success = True
-                         result_message = f"'{item_name}' 구매 완료! ({amount_to_deduct:.0f} KRW 차감)" # 원화는 소수점 없앰
-
-                     elif actual_cost_type_used == 'asi':
-                         # ASI 코인 차감 시도 (User 모델 메서드 사용)
-                         if not user_locked.spend_asi_coin(amount_to_deduct, item_name):
-                              raise ValueError("ASI 코인 잔액이 부족합니다.")
-                         deduction_success = True
-                         result_message = f"'{item_name}' 구매 완료! ({amount_to_deduct:.4f} ASI 차감)" # ASI는 소수점 표시
-                         # TODO: ASI 출금 시 tx_hash 기록/조회 로직 추가
-                         # tx_hash = ...
-
-                     elif actual_cost_type_used == 'sim_cash':
-                          # 표준 아이템에 sim_cash가 정의되어 있다면 여기서 처리 (현재는 title_purchase만 sim_cash)
-                          # title_purchase는 위에서 특별 처리했으므로 여기에 오지 않아야 함.
-                          # 만약 다른 sim_cash 아이템이 있다면 여기에 로직 추가
-                          raise ValueError(f"'{item_name}' 아이템은 모의 현금 결제를 지원하지 않습니다.") # 오류 메시지
-
-                     else:
-                         # Should not reach here if cost_type_definition is handled
-                         raise ValueError(f"'{item_name}' 아이템에 대한 알 수 없는 결제 타입 처리: {actual_cost_type_used}")
-
-
-                # --- 차감 성공 시, 나머지 효과 적용 (deduction_success가 True일 때만 실행) ---
-                # 차감 실패 시는 여기서 예외가 발생해서 트랜잭션 롤백됨.
-                if deduction_success:
-                    action_success = False # 아이템 효과 적용 성공 플래그
-                    # result_message는 이미 위에서 차감 성공 시 설정됨.
-
-                    # === 각 아이템 ID 별 효과 적용 ===
-                    # ASI 코인 충전, 칭호 구매, 수익률 비례 전략 구독 등은 효과 적용 로직이
-                    # 위에서 이미 차감 로직과 함께 또는 특별 케이스로 처리됨.
-                    # 여기서는 그 외 아이템들의 효과를 최종적으로 적용.
-
-                    if item_id == 'cash_refill':
-                        # 모의투자 머니 초기화 - 이미 위에서 user.cash 업데이트로 처리됨
-                        action_success = True # 차감 성공 시 효과 적용도 성공으로 간주
-                        # user_locked.cash 업데이트는 이미 위에서 했음.
-
-                    elif item_id == 'level_xp_1000':
-                        # 레벨 경험치 추가 - 이미 위에서 user.level_xp 업데이트로 처리됨
-                        action_success = True # 차감 성공 시 효과 적용도 성공으로 간주
-                        # TODO: 레벨업 로직 호출 (user_locked.add_level_xp() 같은 함수 사용)
-
-                    elif item_id == 'wl_reset':
-                         # 승패 초기화 효과 적용
-                         user_locked.total_wins = 0
-                         user_locked.total_losses = 0
-                         user_locked.save(update_fields=['total_wins', 'total_losses'])
-                         action_success = True
-                         result_message = result_message or "승패 기록이 초기화되었습니다." # 메시지 중복 방지
-                         user_locked.refresh_from_db(fields=['total_wins', 'total_losses']) # 업데이트된 승패 반영
-
-                    elif item_id == 'nickname_color':
-                        # 닉네임 색상 변경 로직 - 이미 위에서 user.nickname_color 업데이트로 처리됨
-                        # selected_color 유효성 검사는 위에서 했음.
-                        # user_locked.nickname_color 업데이트는 위에서 했음.
-                        action_success = True # 차감 성공 시 효과 적용도 성공으로 간주
-                        # result_message는 이미 위에서 설정됨
-                        user_locked.refresh_from_db(fields=['nickname_color']) # 업데이트된 색상 반영
-
-
-                    elif item_id == 'profile_cosmetic':
-                         # 프로필 꾸미기 아이템 효과 적용 로직 (예: 사용자에게 아바타/배경 선택/지급)
-                         # TODO: 구현 필요. 어떤 꾸미기 아이템인지 추가 데이터(예: cosmetic_id) 필요할 수 있음.
-                         # UserCosmetic.objects.create(user=user_locked, cosmetic_id=...) # 예시
-                         action_success = True
-                         result_message = result_message or f"'{item_name}' 아이템이 적용되었습니다!" # 메시지
-
-
-                    elif item_id == 'auto_trade_10h':
-                         # 자동매매 시간 충전 - 이미 위에서 시간 추가로 처리됨
-                         action_success = True # 차감 성공 시 효과 적용도 성공으로 간주
-                         # result_message는 이미 위에서 설정됨
-                         user_locked.refresh_from_db(fields=['auto_trade_seconds_remaining']) # 시간 반영
-
-
-                    # TODO: strategy_sub_profit (수익률 비례 결제) 아이템 효과 로직 구현 (복잡)
-                    # 차감은 위에서 이미 되었음. 여기서는 구독 활성화 로직.
-                    # 프론트에서 보낸 strategy_id에 대한 구독을 활성화해야 함.
-                    # StrategySubscription.objects.create(...)
-                    # 이 아이템은 가격 계산과 차감, 그리고 구독 활성화가 한 로직으로 묶여야 더 안전함.
-                    # 현재는 차감 후 여기까지 오므로 임시 성공 처리.
-                    # elif item_id == 'strategy_sub_profit':
-                    #    # TODO: 구독 활성화 로직 구현
-                    #    action_success = True
-                    #    result_message = result_message or "수익률 비례 전략 구독 완료!"
-
-
-                    elif item_id in ['asi_refill', 'title_purchase', 'view_trader', 'strategy_page_sub']:
-                         # 이 아이템들은 효과 적용 로직이 이미 위 차감 블록에서 특별 처리되었거나 포함됨.
-                         # 여기에 다시 로직을 넣을 필요는 없음.
-                         action_success = True # 이미 위에서 처리되었다고 가정하고 성공 처리
-
-
-                    else:
-                         # items_info에는 정의되어 있지만 여기서 효과 적용 로직이 누락된 경우
-                         # 차감은 이미 되었으므로 환불 로직이 필요하거나, 애초에 효과 적용 로직까지 포함해야 함.
-                         print(f"오류: 아이템 ID '{item_id}' 효과 적용 로직 누락 또는 미완성.")
-                         # raise NotImplementedError(f"아이템 ID '{item_id}' 효과 적용 로직이 누락되었거나 미완성입니다.") # 개발 중에는 에러 발생
-                         # 임시로 차감 성공/효과 적용 누락 메시지를 반환 (실제 서비스에서는 적절한 오류 처리 필요)
-                         action_success = False # 효과 적용 실패 (개발자에게 알림)
-                         result_message = result_message or f"'{item_name}' 결제는 완료되었으나 효과 적용 로직이 아직 구현되지 않았습니다. 관리자에게 문의하세요."
-
-
-                    # --- 모든 DB 변경사항 최종 저장 (transaction.atomic으로 묶여있음) ---
-                    # save()는 위에서 save(update_fields=...)를 사용했더라도 최종 상태를 보장하기 위해 호출
-                    # 특히 effect 로직에서 save를 명시적으로 호출했다면 중복될 수 있지만 트랜잭션 안에서는 괜찮음
-                    # user_locked.save()
-
-
-                else:
-                     # 차감은 성공했으나 effect 적용 로직이 없는 아이템이거나 다른 문제로 여기 온 경우
-                     # 위에 raise ValueError 등으로 예외가 발생해서 여기 오지 않아야 정상.
-                     # 혹시 모를 상황 대비 (대부분 여기에 오지 않아야 함)
-                     print(f"오류: 아이템 구매 처리 최종 실패 - 차감 성공={deduction_success}, 효과 적용 성공={action_success}")
-                     # 에러 메시지는 이미 위의 except 블록에서 설정되었을 것임.
-                     raise ValueError("아이템 구매 처리 중 예기치 않은 오류 발생.") # 트랜잭션 롤백 유도
-
-
-        # --- Exception Handling within Transaction ---
-        except ValueError as ve:
-             # Catch specific validation errors and deduction errors (raised as ValueErrors)
-             print(f"오류 (ValueError): 아이템 구매 처리 중 오류 ({item_id}) - {ve}")
-             # Transaction is rolled back automatically
-             return JsonResponse({'success': False, 'message': f"구매 처리 실패: {ve}"}, status=400)
-        except NotImplementedError as nie:
-             # catch missing effect logic if raised
-             print(f"오류 (NotImplementedError): 아이템 효과 적용 로직 누락 ({item_id}) - {nie}")
-             return JsonResponse({'success': False, 'message': '서버 내부 오류: 아이템 효과 로직 미구현.'}, status=500)
-        except Exception as e: # Catch any other unexpected errors during transaction block
-             print(f"오류 (Exception): 아이템 효과 적용 중 예기치 않은 오류 ({item_id}): {e}")
-             traceback.print_exc()
-             # Transaction is rolled back automatically
-             return JsonResponse({'success': False, 'message': '서버 내부 오류가 발생했습니다.'}, status=500)
-
-
-        # --- Final Success Response ---
-        # If code reaches here, both deduction and item effect application were successful
-        # 트랜잭션 완료 후, 사용자 객체의 최신 잔액 정보 다시 로드
-        user_locked = User.objects.get(pk=user_id) # 트랜잭션 밖에서 새로 가져옴 (락 필요 없음)
-        # 또는 위에서 이미 락 걸었던 user_locked 객체를 사용하되, 트랜잭션 밖에서 save/refresh
-
-        # 응답에 포함시킬 최종 잔액 정보 (DecimalField는 JSON 직렬화 시 문자열 될 수 있음. 프론트에서 파싱 필요)
-        final_asi_balance = user_locked.asi_coin_balance
-        final_real_cash = user_locked.real_cash
-        final_sim_cash = user_locked.cash
-
-        # TODO: ASI 출금 시 tx_hash 기록/조회 로직 구현했다면 여기에 포함
-        # tx_hash = ... # 트랜잭션 내에서 얻은 해시
-
-        return JsonResponse({
-            'success': True,
-            'message': result_message or f"'{item_name}' 구매 완료!",
-            # 프론트엔드 잔액 업데이트용 최신 잔액 정보 포함 (숫자로 파싱하기 용이하도록 Decimal 유지)
-            'new_balance': final_asi_balance, # ASI 잔액 (Decimal)
-            'new_real_cash': final_real_cash, # 현금 잔액 (Float/Decimal)
-            'new_sim_cash': final_sim_cash, # 모의 현금 잔액 (Float/Decimal)
-            # 필요시 사용자 레벨, 티어, 승패 등 업데이트된 정보도 같이 보냄.
-            # user_locked 객체에서 가져온 필드들 포함.
-            'new_level_xp': user_locked.level_xp,
-            'new_level': user_locked.current_level, # @property 값 사용
-            'new_user_tier_xp': user_locked.user_tier_xp,
-            'new_user_tier_info': user_locked.get_tier_info(), # @property 결과 사용
-            'new_total_wins': user_locked.total_wins,
-            'new_total_losses': user_locked.total_losses,
-            'new_auto_trade_seconds': user_locked.auto_trade_seconds_remaining,
-            'tx_hash': tx_hash # ASI 출금 시 해시 (필요시)
-        })
-
-
-    # --- 최외곽 에러 처리 ---
-    except json.JSONDecodeError:
-        print("오류: 잘못된 JSON 요청 본문.")
-        return JsonResponse({'success': False, 'message': '잘못된 요청 형식입니다.'}, status=400)
-    except Exception as e:
-        print(f"API 오류 (/api/shop/purchase/): {e}") # 예기치 않은 서버 내부 오류
-        traceback.print_exc()
-        return JsonResponse({'success': False, 'message': '서버 내부 오류가 발생했습니다.'}, status=500)
-
-# TODO: spend_asi_coin 함수 구현 필요 (User 모델의 asi_coin_balance 차감) - Decimal 사용하도록
-# TODO: StrategyPageSubscription, PositionViewSubscription, UserTitle 모델 구현 필요
-# TODO: spend_asi_coin 함수 내에서 ASI 출금 연동 및 tx_hash 반환 로직 추가 필요
-# TODO: 수익률 비례 전략 구독 가격 계산 및 활성화 로직 구현 (복잡)
-# TODO: spend_real_cash, spend_sim_cash 함수가 User 모델 메서드로 구현되어 있다면 여기서 삭제하고 User 모델에서 import하여 사용.
-# TODO: User 모델에 current_level, get_tier_info 메서드가 없다면 models.py에 추가.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST # POST 요청만 받도록
-from django.views.decorators.csrf import ensure_csrf_cookie # CSRF 처리 관련 (필요시)
-from django.contrib.auth.decorators import login_required
-from chart.blockchain_reward import process_trade_result # 코인 보상 업데이트
 
 @login_required # 로그인 필수
 @require_POST  # POST 요청만 허용
@@ -1420,26 +1318,6 @@ def process_trade_result_api_view(request):
 
 
 
-
-
-
-
-
-
-
-
-# 예시: your_app_name/views.py
-
-from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
-import json
-from decimal import Decimal, InvalidOperation # Decimal 및 오류 처리 import
-
-# initiate_onchain_withdrawal 함수 import (★ 실제 경로 확인 및 수정 필요 ★)
-# 예: from your_project_name.blockchain_service import initiate_onchain_withdrawal
-from chart.blockchain_service import initiate_onchain_withdrawal # 임시 경로
-
 @login_required # 로그인 필수
 @require_POST  # POST 요청만 허용
 # @csrf_exempt # CSRF 테스트 필요 시 임시 사용, 실제로는 JS에서 토큰 전송 필요
@@ -1485,53 +1363,123 @@ def initiate_withdrawal_api_view(request):
         return JsonResponse({'success': False, 'message': '서버 내부 오류가 발생했습니다.'}, status=500)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-""" 프로필 설정 페이지를 보여주는 뷰 (GET 요청 처리) """
-@login_required # 로그인 필수
+@login_required
 def profile_settings_view(request):
+    user = request.user
+    # GET 요청 시 또는 다른 폼 제출 시 보여줄 초기 폼 인스턴스
+    # initial 값을 명시적으로 전달하면 changed_data 비교에 사용됩니다.
+    nickname_form_instance = NicknameChangeForm(instance=user, initial={'nickname': user.nickname}, user_instance=user)
+    position_sharing_form_instance = PositionSharingForm(instance=user)
 
-    # TODO: 여기에 POST 요청 처리 로직 추가 필요 (폼 제출 시)
-    # if request.method == 'POST':
-    #     # 폼 종류(nickname, contact, wallet, sharing) 구분
-    #     form_type = request.POST.get('form_type')
-    #     if form_type == 'nickname':
-    #         # 닉네임 변경 처리 (쿨타임 확인, 유효성 검사, DB 저장)
-    #         pass
-    #     elif form_type == 'sharing':
-    #         # 포지션 공유 설정 처리
-    #         pass
-    #     elif form_type == 'contact' or form_type == 'wallet':
-    #         # 인증 절차 시작 (이메일 발송, SMS 발송 등 - 별도 구현 필요)
-    #         messages.info(request, "인증 절차 구현이 필요합니다.")
-    #         pass
-    #     # 처리 후 현재 페이지로 다시 리다이렉트 (메시지 포함)
-    #     return redirect('profile_settings')
+    if request.method == 'POST':
+        form_type = request.POST.get('form_type')
+        print(f"[PROFILE_SETTINGS] POST 요청 받음, form_type: {form_type}")
 
-    # GET 요청 시 현재 사용자 정보 전달
+        if form_type == 'nickname':
+            if not user.can_change_nickname():  # 이 시점의 user.nickname은 DB의 현재 값
+                messages.error(request, _("닉네임 변경 주기가 아직 지나지 않았습니다."))
+                return redirect('profile_settings')
+
+            # POST 데이터와 함께 instance를 전달하여 어떤 객체를 업데이트할지 알려줍니다.
+            # initial도 함께 전달하면 changed_data가 더 정확하게 작동합니다.
+            nickname_form_instance = NicknameChangeForm(request.POST, instance=user,
+                                                        initial={'nickname': user.nickname}, user_instance=user)
+
+            if nickname_form_instance.is_valid():
+                print("[PROFILE_SETTINGS] NicknameChangeForm 유효성 검사 통과!")
+
+                # form.changed_data는 초기값(instance의 값)과 비교하여 변경된 필드 이름들의 리스트를 반환합니다.
+                if 'nickname' in nickname_form_instance.changed_data:
+                    print(
+                        f"[PROFILE_SETTINGS] 닉네임이 실제로 변경됨 (form.changed_data 확인). 새 닉네임: '{nickname_form_instance.cleaned_data.get('nickname')}'")
+
+                    # 폼의 save() 메서드가 instance의 nickname을 cleaned_data 값으로 업데이트하고 저장 준비를 합니다.
+                    # NicknameChangeForm의 save 메서드는 ModelForm의 기본 save를 사용합니다.
+                    updated_user = nickname_form_instance.save(commit=False)  # DB에 바로 저장 X, nickname 필드는 업데이트됨
+                    updated_user.nickname_last_updated = timezone.now()
+                    updated_user.save(update_fields=['nickname', 'nickname_last_updated'])  # 변경된 nickname과 시간만 저장
+
+                    messages.success(request, _("닉네임이 성공적으로 변경되었습니다."))
+                else:
+                    # 폼은 유효하지만, 닉네임 필드 값 자체는 초기값과 동일한 경우
+                    print(
+                        f"[PROFILE_SETTINGS] 닉네임이 변경되지 않음 (form.changed_data에 'nickname' 없음). 제출된 값: '{nickname_form_instance.cleaned_data.get('nickname')}'")
+                    messages.info(request, _("기존과 동일한 닉네임이거나 입력된 내용이 없습니다. 변경사항이 없습니다."))
+                return redirect('profile_settings')
+            else:
+                # 폼 유효성 검사 실패 (예: 금칙어, 다른 사용자가 이미 사용하는 새 닉네임 등)
+                print(
+                    f"[PROFILE_SETTINGS] NicknameChangeForm 유효성 검사 실패! 오류: {nickname_form_instance.errors.as_json(escape_html=True)}")
+                messages.error(request, _("닉네임 변경에 실패했습니다. 입력값을 확인해주세요."))
+                # 오류가 있는 nickname_form_instance가 아래 context에 포함되어 다시 렌더링됨
+
+        elif form_type == 'sharing':
+            position_sharing_form_instance = PositionSharingForm(request.POST, instance=user)
+            if position_sharing_form_instance.is_valid():
+                position_sharing_form_instance.save()  # ModelForm의 save는 instance를 업데이트하고 저장함
+                messages.success(request, _("포지션 공개 설정이 저장되었습니다."))
+                return redirect('profile_settings')
+            else:
+                messages.error(request, _("포지션 공개 설정 저장에 실패했습니다."))
+                # 오류가 있는 position_sharing_form_instance가 아래 context에 포함됨
+
+    # GET 요청이거나, POST 처리 후 오류가 있어서 다시 렌더링해야 하는 경우
+    # nickname_form_instance와 position_sharing_form_instance는
+    # GET 요청 시에는 위에서 초기화된 깨끗한 폼 인스턴스,
+    # POST 오류 시에는 request.POST 데이터와 오류 정보가 담긴 폼 인스턴스가 됩니다.
+
+    nickname_change_cooldown_time_left_str = ""
+    # User 모델에 can_change_nickname 메서드가 정의되어 있다고 가정
+    if hasattr(user, 'can_change_nickname') and user.nickname_last_updated and not user.can_change_nickname():
+        cooldown_duration = timedelta(minutes=5)  # 폼 또는 모델에 정의된 쿨타임과 일치해야 함
+        cooldown_end_time = user.nickname_last_updated + cooldown_duration
+        time_left = cooldown_end_time - timezone.now()
+        if time_left.total_seconds() > 0:
+            minutes_left = int(time_left.total_seconds() // 60)
+            seconds_left = int(time_left.total_seconds() % 60)
+            if minutes_left > 0:
+                nickname_change_cooldown_time_left_str += f"{minutes_left}분 "
+            nickname_change_cooldown_time_left_str += f"{seconds_left}초"
+
     context = {
-        'user': request.user
+        'nickname_form': nickname_form_instance,
+        'position_sharing_form': position_sharing_form_instance,
+        'user': user,
+        'nickname_change_cooldown_time_left': nickname_change_cooldown_time_left_str
     }
     return render(request, 'main/user_profile_setting.html', context)
 
 
+@login_required
+def account_delete_view(request):
+    if request.method == 'POST':
+        user = request.user
 
-# views.py (예시: index2_simulator_page 뷰)
-from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
-import json
-from django.contrib.auth import get_user_model
-from .models import Holding # 모델 임포트 가정
+        # 사용자 비활성화 및 관련 정보 업데이트
+        user.is_active = False
+        user.date_deactivated = timezone.now()
+        user.can_rejoin_at = timezone.now() + timedelta(days=30)  # 30일 후 재가입 가능
+        # 필요하다면 이메일, 닉네임 등에 고유한 비활성 접미사 추가 (예: user_deactivated_123)
+        # user.email = f"{user.email}.deleted.{user.id}" # 예시
+        # user.username = f"{user.username}_deleted_{user.id}" # 예시 (만약 username을 재사용하지 않도록 한다면)
+        user.save()
+
+        logout(request)  # 사용자 로그아웃
+        messages.success(request, _("회원 탈퇴가 정상적으로 처리되었습니다. 이용해주셔서 감사합니다."))
+        return redirect('index')  # 홈페이지로 리디렉션
+
+    # GET 요청 시 (또는 POST가 아닐 시) 프로필 설정 페이지로 리디렉션 (또는 별도 확인 페이지)
+    return redirect('user_profile_settings')
+
+
+
+
+
+
+
+
+
+
 
 User = get_user_model()
 

@@ -8,9 +8,18 @@ from . import views_korea_stock
 from . import views_main
 from . import views_stock_coin
 from . import views_AI
+from . import views_market
+from payments import views as payment_views
 
 # Django 내장 LoginView와 LogoutView 임포트
 from django.contrib.auth import views as auth_views
+
+
+
+
+from django.contrib import admin
+from django.urls import path, include # include를 import 했는지 확인!
+
 '''
 예시
 path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에서
@@ -25,8 +34,9 @@ path("list/", views_korea_stock.korea_stock_list, name="korea_stock_list") 에�
 urlpatterns = [
     #웹 요소들
     path('profile/settings/', views_main.profile_settings_view, name='profile_settings'), #유저프로필 설정시 호출
+    path('account/delete/', views_main.account_delete_view, name='account_delete'),
     path('api/trade/process_result/', views_main.process_trade_result_api_view, name='process_trade_result_api'), # 이전 단계에서 추가한 API
-    path('api/shop/purchase/', views_main.purchase_item_api_view, name='purchase_item_api'),       # 상점 API
+    path('api/shop/purchase/', payment_views.purchase_item_api_view, name='purchase_item_api'),       # 상점 API
     path('api/wallet/withdraw/', views_main.initiate_withdrawal_api_view, name='initiate_withdrawal_api'), # 출금 API 경로 추가
     path('api/get_websocket_key/', views_main.get_websocket_key_api, name='get_websocket_key_api'),#웹소켓 api호출,
     path('api/update_portfolio/', views_main.update_portfolio_api, name='update_portfolio_api'), #포폴 DB에 업데이트
@@ -69,6 +79,12 @@ urlpatterns = [
     path("index5", views_main.index5_community, name="index5_community"),
     path("marketing/", views_main.marketing_page, name="marketing_page"),
 
+    # 카드등록 페이지
+    path('payment/', include('payments.urls')),
+    path('payment/add-card/', payment_views.add_card_view, name='add_card'),
+    path('payment/card-registration-success/', payment_views.card_registration_success_view,
+         name='card_registration_success'),
+
 
     #AI
     path('run_backtest/', views_AI.run_backtest, name='run_backtest'),
@@ -76,10 +92,22 @@ urlpatterns = [
     path('api/trader2/data/', views_AI.AI_trader_2_get_data, name='ai_trader_2_data'),
     path('api/trader3/data/', views_AI.AI_trader_3_get_data, name='ai_trader_3_data'),
     path('api/trader4/data/', views_AI.AI_trader_4_get_data, name='ai_trader_4_data'),
+    path('api/trader5/data/', views_AI.AI_trader_5_get_data, name='ai_trader_5_data'),
     path('run_fin_RAG/', views_AI.AI_finance_RAG, name='ai_fin_rag'),
 
     #시스템 (코인차감등)
     path('api/trigger_coin_deduction/', views_main.trigger_coin_deduction_api, name='trigger_coin_deduction_api'),
+
+    #소셜 로그인, 회원가입
+    path('admin/', admin.site.urls),
+    path('accounts/', include('allauth.urls')),
+
+    # 회원가입 2차인증,닉네임,휴대폰인증 AJAX URLS
+    path('ajax/check_username/', views_main.check_username_view, name='check_username'),
+    path('ajax/check_nickname/', views_main.check_nickname_view, name='check_nickname'),
+    path('ajax/send_otp/', views_main.send_otp_view, name='send_otp'),
+    path('ajax/verify_otp/', views_main.verify_otp_view, name='verify_otp'),
+
 ]
 
 # 배포
