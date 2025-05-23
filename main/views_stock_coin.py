@@ -3,6 +3,12 @@ from django.http import HttpResponse
 from django.http import JsonResponse
 import datetime
 
+import json
+import redis
+from django.http import JsonResponse
+from django.conf import settings
+import traceback
+
 import sys
 import os
 
@@ -84,7 +90,6 @@ def oversea_past_api(request, minute, symbol, data_number):   # 과거 데이터
     with open(file_path_str, 'r', encoding='utf-8') as f:
         # 생성된 JSON 파일은 바로 캔들 데이터 리스트임
         candle_data_list = json.load(f)
-
     # 데이터 형식 검증 (선택적이지만 권장)
     if not isinstance(candle_data_list, list):
         # 예상치 못한 파일 형식일 경우
@@ -125,10 +130,9 @@ def get_redis_connection():
   # redis.asyncio.Redis 가 아닌 redis.Redis 사용
   return redis.Redis(connection_pool=redis_pool)
 
-# 함수 이름을 oversea_api 로 사용하고 있다면 아래 함수 이름 사용
 # >>> 캐싱 데코레이터 추가 <<<
-@cache_page(60 * 1) # 60초(1분) 동안 서버에 이 뷰의 응답을 캐싱
-@cache_control(public=True, max_age=60) # 브라우저에게도 60초 동안 캐싱 가능하다고 알림
+@cache_page(1) # 60초(1분) 동안 서버에 이 뷰의 응답을 캐싱
+@cache_control(public=True, max_age=1) # 브라우저에게도 60초 동안 캐싱 가능하다고 알림
 def load_stock_coin_data(request, minute, symbol, exchange_code): # URL 패턴에 맞는 파라미터 사용 (exchange_code 포함됨)
     """Redis 리스트에서 주식/상품 데이터를 가져오는 뷰 함수 (동기)"""
     data_list = []
@@ -152,6 +156,7 @@ def load_stock_coin_data(request, minute, symbol, exchange_code): # URL 패턴�
                     print(f"Error decoding JSON for element in key: {redis_key}, data: {element_json}") # 로깅
         else:
             print(f"Data list is empty or key '{redis_key}' does not exist in Redis.") # 로그
+
         # API 응답 반환
         return JsonResponse({'status': True, 'response': {'data': data_list}}, status=200)
 
@@ -166,11 +171,78 @@ def load_stock_coin_data(request, minute, symbol, exchange_code): # URL 패턴�
         import traceback
         traceback.print_exc() # 개발 중 상세 에러 확인
         return JsonResponse({'status': False, 'message': 'An internal server error occurred'}, status=500)
-    # finally: # 연결 풀을 사용하면 개별 연결을 닫을 필요 없음
-    #     if redis_conn:
-    #         # redis_conn.close() # 연결 풀 사용 시 close() 불필요
 
 
+
+
+
+###################################redis에서 실시간 호가데이터 가져옴#######################
+@cache_page(1)
+@cache_control(public=True, max_age=1)
+def load_stock_coin_ASK_data(request, data_type_or_interval, symbol, exchange_code):  # 파라미터 이름 변경
+    """
+    Redis에서 주식/코인 데이터를 가져오는 뷰 함수.
+    data_type_or_interval이 "ASK"면 호가(문자열), 그 외에는 분봉(리스트)으로 처리.
+    """
+    redis_conn = None
+    response_data = []  # 기본 빈 리스트 (분봉용) 또는 단일 객체 (호가용)
+
+    try:
+        redis_conn = get_redis_connection()  # decode_responses=True로 문자열을 받음
+        redis_key = f"stockdata:{symbol}:{data_type_or_interval.upper()}"  # data_type도 대문자로 통일
+
+
+        if not redis_conn.exists(redis_key):
+            print(f"DEBUG [views.py]: Key '{redis_key}' does not exist in Redis.")
+            return JsonResponse({'status': False, 'message': f"Data for {redis_key} not found in Redis"}, status=404)
+
+        if data_type_or_interval.upper() == "ASK":  # 호가 데이터 (단일 JSON 문자열)
+            value_json_str = redis_conn.get(redis_key)
+            if value_json_str:
+                try:
+                    # 단일 JSON 객체를 response_data에 할당 (리스트가 아님)
+                    response_data = json.loads(value_json_str)
+                    return JsonResponse({'status': True, 'response': {'data': response_data, 'type': 'orderbook'}},
+                                        status=200)
+                except json.JSONDecodeError:
+                    return JsonResponse({'status': False, 'message': 'Error decoding data from Redis'}, status=500)
+            else:
+                return JsonResponse({'status': False, 'message': f"No data for {redis_key}"}, status=404)
+
+        else:  # K-line (분봉) 데이터 (JSON 문자열의 리스트)
+            # K-line 데이터는 바이트로 저장 후 디코딩했으므로, get_redis_connection(decode_responses=False) 필요할 수 있음
+            # 하지만 바이낸스 스크립트도 decode_responses=True로 저장했으므로, 여기서는 True로 가정
+            elements_json_str_list = redis_conn.lrange(redis_key, 0, -1)
+
+            if elements_json_str_list:
+                for element_json_str in elements_json_str_list:
+                    try:
+                        # 이미 문자열이므로 .decode() 불필요
+                        element_dict = json.loads(element_json_str)
+                        response_data.append(element_dict)
+                    except json.JSONDecodeError:
+                        print(
+                            f"Error decoding JSON for K-line element in key: {redis_key}, data: {element_json_str[:200]}")
+                print(
+                    f"DEBUG [views.py]: Successfully fetched and parsed K-line list data for {redis_key} ({len(response_data)} items)")
+                return JsonResponse({'status': True, 'response': {'data': response_data, 'type': 'kline_list'}},
+                                    status=200)
+            else:
+                print(f"K-line list for key '{redis_key}' is empty or does not exist.")
+                return JsonResponse({'status': False, 'message': f"No K-line data for {redis_key}"}, status=404)
+
+    except redis.exceptions.ConnectionError as e:
+        print(f"Redis connection error: {e}")
+        return JsonResponse({'status': False, 'message': 'Failed to connect to Redis'}, status=503)
+    except redis.exceptions.ResponseError as e_redis_cmd:  # 예: LLEN을 문자열에 사용 시
+        print(f"Redis command error for key '{redis_key}': {e_redis_cmd}")
+        return JsonResponse({'status': False, 'message': f'Redis data type error for key {redis_key}'}, status=500)
+    except Exception as e:
+        print(f"An unexpected error occurred in load_stock_coin_data: {e}")
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'status': False, 'message': 'An internal server error occurred'}, status=500)
+    # finally 블록은 Django 뷰에서 Redis 연결을 자동으로 닫아주므로 필수는 아님 (연결 풀 사용)
 
 
 
@@ -209,15 +281,14 @@ def oversea_news(request):
 
 def coin_list(requset):
     coins = [
-        {'stockName': 'BTC/USDT', 'itemCode': 'BTCUSDT', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'Binance'},
+        {'stockName': 'BTC/USDT', 'itemCode': 'BTCUSDT', 'closePrice': 'Binance','fluctuationsRatio': 'Binance', 'exchange_code': 'Binance'},
     ]
     return JsonResponse({'stocks': coins})
 
 def oversea_stock_list(request): #전체
     stocks = [
-
         # 뉴욕
-        {'stockName': 'NAS 3배 ETF / ProShares Ultra QQQ', 'itemCode': 'TQQQ', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'NYS'},
+        {'stockName': 'NAS 3배 ETF', 'itemCode': 'TQQQ', 'closePrice': 'NYS','fluctuationsRatio': 'NYS', 'exchange_code': 'NYS'},
         #{'stockName': 'S&P 3배 ETF/ ProShares Ultra S&P500', 'itemCode': 'UPRO', 'closePrice': 50.00, 'fluctuationsRatio': -1.2, 'exchange_code':'NYS'},
         #{'stockName': 'NAS ETF / Invesco QQQ Trust', 'itemCode': 'QQQ', 'closePrice': 370.00, 'fluctuationsRatio': 1.0, 'exchange_code':'NYS'},
         #{'stockName': '애플 / Apple Inc.', 'itemCode': 'AAPL', 'closePrice': 175.00, 'fluctuationsRatio': 0.3, 'exchange_code':'NYS'},
@@ -277,7 +348,7 @@ def oversea_NYSE_stock_list(request):
         #{'stockName': 'SPDR S&P 500 ETF Trust', 'itemCode': 'SPY', 'closePrice': 450.00, 'fluctuationsRatio': 0.5}, #close와 ratio는 실시간 현재 값
         #{'stockName': 'ProShares Ultra S&P500', 'itemCode': 'UPRO', 'closePrice': 50.00, 'fluctuationsRatio': -1.2},
         #{'stockName': 'Invesco QQQ Trust', 'itemCode': 'QQQ', 'closePrice': 370.00, 'fluctuationsRatio': 1.0},
-        {'stockName': 'NAS 3배 ETF / ProShares Ultra QQQ', 'itemCode': 'TQQQ', 'closePrice': 100.00,'fluctuationsRatio': 2.5, 'exchange_code': 'NYS'},
+        {'stockName': 'NAS 3배 ETF', 'itemCode': 'TQQQ', 'closePrice': 'NYS','fluctuationsRatio': 'NYS', 'exchange_code': 'NYS'},
         #{'stockName': 'Apple Inc.', 'itemCode': 'AAPL', 'closePrice': 175.00, 'fluctuationsRatio': 0.3},
         #{'stockName': 'Amazon.com Inc.', 'itemCode': 'AMZN', 'closePrice': 120.00, 'fluctuationsRatio': -0.5},
         #{'stockName': 'Alphabet Inc. (GOOGL)', 'itemCode': 'GOOGL', 'closePrice': 2800.00, 'fluctuationsRatio': 1.5},
@@ -306,75 +377,179 @@ def oversea_AMEX_stock_list(request):
     return JsonResponse({'stocks': stocks})
 
 
+#실시간 모든 심볼의 현재가 호출
+# --- Redis 연결 설정 (파일 상단 또는 Django settings.py 기반으로 설정) ---
+REDIS_HOST = getattr(settings, 'REDIS_HOST', 'localhost')
+REDIS_PORT = getattr(settings, 'REDIS_PORT', 6379)
+REDIS_DB_KLINE = getattr(settings, 'REDIS_DB_FOR_KLINES', 0)  # K-line 데이터가 저장된 DB 번호
 
-
-
-# Django views.py 예시
-import sys
-from django.http import JsonResponse
-from django.conf import settings
-
-target_path = r"D:\AI_pycharm\pythonProject\3_AI_LLM_finance\a_korea_invest_api_env"
-if target_path not in sys.path:
-     sys.path.append(target_path)
-# --------------------------------------------------------------------
-import get_ovsstk_chart_price # 실제 스크립트 파일 이름
-
-def get_realtime_candle_data(request, market, interval, symbol):
-    """최신 1분봉 캔들 데이터 1개를 반환하는 API 뷰"""
-
-    # ★★ 캐시 키: 함수 이름 + 모든 파라미터 조합 ★★
-    cache_key = f"get_realtime_candle_data_{market}_{interval}_{symbol}"
-    cached_data = cache.get(cache_key)
-
-    if cached_data:
-        print(f"Cache hit for {cache_key}")
-        return JsonResponse(cached_data)  # 캐시된 JSON 응답 반환
-    else:
-        access_token, access_token_expired = get_ovsstk_chart_price.get_access_token()  # 토큰 갱신
-        latest_candle_data_list = get_ovsstk_chart_price.fetch_and_save_data(
-            market, symbol, interval, 50, access_token # 분봉 '1', 개수 '1'
+def get_redis_connection_for_kline_view(decode_responses=False):  # 기본적으로 바이트로 받도록 변경
+    """K-line 데이터 조회용 Redis 연결을 반환하는 헬퍼 함수 (동기)"""
+    try:
+        r = redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            db=REDIS_DB_KLINE,
+            decode_responses=decode_responses
         )
-        print(latest_candle_data_list,'fkasnfklsa')
-        if candle_data_list and isinstance(candle_data_list, list) and len(candle_data_list) > 0:
+        r.ping()
+        return r
+    except redis.exceptions.ConnectionError as e:
+        print(f"CRITICAL (views_stock_coin): Redis 연결 실패 - {e}. API가 정상 작동하지 않습니다.")
+        return None
+    except Exception as e_init:
+        print(f"CRITICAL (views_stock_coin): Redis 클라이언트 초기화 중 오류 - {e_init}.")
+        return None
 
-            # --- JavaScript에서 사용할 형태로 전체 리스트 변환 ---
-            # ★★ API 실제 응답 키 이름 확인 필수! ★★
-            formatted_data = []
-            for item in candle_data_list:
-                if item.get('datetime') and item.get('last') is not None:
-                    formatted_data.append({
-                        'localDate': item.get('datetime'),  # JS에서 사용할 키: API 응답 키
-                        'openPrice': item.get('open'),
-                        'highPrice': item.get('high'),
-                        'lowPrice': item.get('low'),
-                        'closePrice': item.get('last'),
-                        'volume': item.get('evol')
+def get_realtime_candle_data(request, market, interval, symbol): # 심볼에 해당하는 현재가 호출
+    # Redis에서 바이트로 데이터를 읽어와서 직접 디코딩 (check_redis_data.py와 유사하게)
+    redis_conn = get_redis_connection_for_kline_view(decode_responses=False)
+
+    if not redis_conn:
+        return JsonResponse({'status': False, 'message': 'Redis service unavailable'}, status=503)
+
+    redis_key = f"stockdata:{symbol.upper()}:{interval}"
+
+    print(f"DEBUG [API - get_realtime_candle_data]: Redis 키 조회 시도: '{redis_key}' (Market: {market})")
+
+    try:
+        key_type = redis_conn.type(redis_key)  # 키 타입을 바이트로 받음
+        if key_type == b'none':  # 바이트 비교
+            return JsonResponse(
+                {'status': False, 'message': f"No data found for symbol {symbol} with interval {interval}."},
+                status=404)
+        if key_type != b'list':  # 바이트 비교
+            print(f"ERROR [API]: 키 '{redis_key}'는 리스트 타입이 아닙니다 (실제 타입: {key_type.decode('utf-8')}). 저장 방식을 확인하세요.")
+            return JsonResponse(
+                {'status': False, 'message': f"Invalid data type in Redis for {symbol} [{interval}]. Expected list."},
+                status=500)
+
+        last_kline_json_bytes = redis_conn.lindex(redis_key, -1)  # 바이트로 받음
+
+        if last_kline_json_bytes:
+            # 바이트를 UTF-8 문자열로 디코딩 후 JSON 파싱
+            kline_data = json.loads(last_kline_json_bytes.decode('utf-8'))
+            close_price_value = kline_data.get('closePrice')
+
+            if close_price_value is not None:
+                try:
+                    close_price_float = float(close_price_value)
+                    return JsonResponse({
+                        'status': True,
+                        'symbol': symbol.upper(),
+                        'interval': interval,
+                        'market': market.upper(),
+                        'closePrice': close_price_float,
+                        'localDate': kline_data.get('localDate', '')
                     })
-                else:
-                    print(f"Warning: Skipping invalid item in API response: {item}")
-
-            if not formatted_data:
-                print(f"No valid candle data found in API response for {market}/{symbol}/{interval}")
-                return JsonResponse({'success': False, 'error': 'No valid candle data found in API response'}, status=404)
-
-            # --- 응답 데이터 구성 (300개 데이터 리스트) ---
-            response_data = {
-                'success': True,
-                'data': formatted_data  # <<<--- 전체 리스트 반환
-            }
-            # --- 캐시에 저장 (예: 5초 유효) ---
-            cache.set(cache_key, response_data, timeout=5)
-            # -----------------------------------
-            print(f"{len(formatted_data)} candles fetched from API and cached for {cache_key}")
-            return JsonResponse(response_data)
+                except ValueError:
+                    print(f"ERROR [API]: 키 '{redis_key}'의 closePrice ('{close_price_value}')를 float으로 변환 불가.")
+                    return JsonResponse(
+                        {'status': False, 'message': f"Invalid price data format for {symbol} [{interval}]."},
+                        status=500)
+            else:
+                print(f"WARNING [API]: 키 '{redis_key}'의 마지막 K-line 데이터에 'closePrice' 필드가 없습니다. 데이터: {kline_data}")
+                return JsonResponse({'status': False, 'message': f"'closePrice' not found for {symbol} [{interval}]."},
+                                    status=404)
         else:
-            print(f"No data list received from API for {market}/{symbol}/{interval} ({num_candles_to_fetch} request)")
-            return JsonResponse({'success': False, 'error': f'No data list received from API ({num_candles_to_fetch} request)'},
-                                status=404)
+            return JsonResponse({'status': False, 'message': f"Data list empty for {symbol} [{interval}]."}, status=404)
+
+    except redis.exceptions.RedisError as r_err:
+        print(f"ERROR [API]: Redis 명령어 실행 중 오류 발생 (키: '{redis_key}'): {r_err}")
+        return JsonResponse({'status': False, 'message': 'Error communicating with Redis.'}, status=500)
+    except json.JSONDecodeError as j_err:
+        data_preview = last_kline_json_bytes.decode('utf-8')[
+                       :200] if 'last_kline_json_bytes' in locals() and last_kline_json_bytes else "N/A (bytes)"
+        print(f"ERROR [API]: Redis 데이터 JSON 디코딩 실패 (키: '{redis_key}'): {j_err}. 데이터(일부): {data_preview}")
+        return JsonResponse({'status': False, 'message': 'Error decoding data from Redis.'}, status=500)
+    except Exception as e:
+        print(f"ERROR [API]: 알 수 없는 오류 발생 (키: '{redis_key}'): {e}")
+        traceback.print_exc()
+        return JsonResponse({'status': False, 'message': 'An internal server error occurred.'}, status=500)
 
 
+@cache_page(1)
+@cache_control(public=True, max_age=1)
+def get_redis_connection_for_views(decode_responses=False):
+    try:
+        r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB_KLINE, decode_responses=decode_responses)
+        r.ping()
+        return r
+    except redis.exceptions.ConnectionError as e:
+        print(f"CRITICAL (views_stock_coin): Redis 연결 실패 - {e}.")
+        return None
+    except Exception as e_init:
+        print(f"CRITICAL (views_stock_coin): Redis 클라이언트 초기화 중 오류 - {e_init}.")
+        return None
 
+
+def get_batch_current_prices(request):  # 모든종복 현재가 일괄호출 (보유종목 업뎃에 사용)
+    """
+    GET 파라미터로 받은 여러 심볼들에 대해 Redis에서 각 심볼의
+    1분봉 마지막 closePrice를 조회하여 딕셔너리로 반환합니다.
+    호출 예: /api/get_batch_prices/?symbols=TQQQ,BTCUSDT,ETHUSDT
+    """
+    if request.method != 'GET':
+        return JsonResponse({'status': False, 'message': 'GET request required.'}, status=405)
+
+    symbols_param = request.GET.get('symbols', '')
+    if not symbols_param:
+        return JsonResponse({'status': False, 'message': 'No symbols provided.'}, status=400)
+
+    symbols_list = [s.strip().upper() for s in symbols_param.split(',') if s.strip()]
+    if not symbols_list:
+        return JsonResponse({'status': False, 'message': 'Symbol list is empty.'}, status=400)
+
+    redis_conn = get_redis_connection_for_kline_view(decode_responses=False)  # 바이트로 받고 직접 디코딩
+    if not redis_conn:
+        return JsonResponse({'status': False, 'message': 'Redis service unavailable'}, status=503)
+
+    prices_data = {}
+    interval_to_fetch = '1m'  # 현재가로는 보통 1분봉 사용
+
+    for symbol in symbols_list:
+        redis_key = f"stockdata:{symbol}:{interval_to_fetch}"
+        try:
+            if not redis_conn.exists(redis_key):
+                prices_data[symbol] = None  # 데이터 없음 표시
+                print(f"DEBUG [get_batch_prices]: Key '{redis_key}' does not exist in Redis.")
+                continue
+
+            key_type = redis_conn.type(redis_key)
+            if key_type != b'list':
+                prices_data[symbol] = None
+                print(
+                    f"WARNING [get_batch_prices]: Key '{redis_key}' is not a list (type: {key_type.decode('utf-8')}).")
+                continue
+
+            last_kline_json_bytes = redis_conn.lindex(redis_key, -1)
+            if last_kline_json_bytes:
+                kline_data = json.loads(last_kline_json_bytes.decode('utf-8'))
+                close_price = kline_data.get('closePrice')
+                if close_price is not None:
+                    try:
+                        prices_data[symbol] = float(close_price)
+                    except ValueError:
+                        prices_data[symbol] = None
+                        print(
+                            f"WARNING [get_batch_prices]: Could not convert closePrice for {symbol} to float: {close_price}")
+                else:
+                    prices_data[symbol] = None  # closePrice 필드 없음
+            else:
+                prices_data[symbol] = None  # 리스트는 있지만 비어있음
+
+        except redis.RedisError as r_err:
+            print(f"ERROR [get_batch_prices]: Redis error for key '{redis_key}': {r_err}")
+            prices_data[symbol] = None  # 오류 시 해당 심볼 가격은 null
+        except json.JSONDecodeError as j_err:
+            print(f"ERROR [get_batch_prices]: JSON decoding error for key '{redis_key}': {j_err}")
+            prices_data[symbol] = None
+        except Exception as e:
+            print(f"ERROR [get_batch_prices]: Unexpected error for key '{redis_key}': {e}")
+            traceback.print_exc()
+            prices_data[symbol] = None
+
+    return JsonResponse({'status': True, 'prices': prices_data})
 
 
 

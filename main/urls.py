@@ -8,7 +8,6 @@ from . import views_korea_stock
 from . import views_main
 from . import views_stock_coin
 from . import views_AI
-from . import views_market
 from payments import views as payment_views
 
 # Django 내장 LoginView와 LogoutView 임포트
@@ -54,9 +53,12 @@ urlpatterns = [
     path('board/', include('board.urls')), # board 앱의 urls.py 연결
 
     #데이터
-    path('api/realtime_candle/<str:market>/<str:interval>/<str:symbol>/', views_stock_coin.get_realtime_candle_data, name='realtime_candle'),
+    path('api/realtime_candle/<str:market>/<str:interval>/<str:symbol>/', views_stock_coin.get_realtime_candle_data, name='realtime_candle'), #심볼에 해당하는 현재가 조회
+    path('api/get_batch_prices/', views_stock_coin.get_batch_current_prices, name='get_batch_current_prices_api'),#모든 종목 현재가 일괄 조회
+
     path("oversea_news/", views_stock_coin.oversea_news, name="oversea_stock_ask"),
     path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_stock_coin.load_stock_coin_data, name="oversea_stock_ask"), #가격(해외주식, 코인 통합)
+    path("oversea_ask_api/<str:data_type_or_interval>/<str:symbol>/<str:exchange_code>", views_stock_coin.load_stock_coin_ASK_data, name="oversea_stock_ask_data"), #호가(해외주식, 코인 통합)
     path("oversea_past_api/<str:minute>/<str:symbol>/<str:data_number>/", views_stock_coin.oversea_past_api, name="oversea_past_stock_ask"), #과거 시뮬레이션용 데이터
 
     # 코인 데이터
