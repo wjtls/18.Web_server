@@ -8,16 +8,23 @@ from . import views_korea_stock
 from . import views_main
 from . import views_stock_coin
 from . import views_AI
+from . import views_app
 from payments import views as payment_views
 
 # Django 내장 LoginView와 LogoutView 임포트
 from django.contrib.auth import views as auth_views
 
-
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView, # 선택 사항
+)
 
 
 from django.contrib import admin
 from django.urls import path, include # include를 import 했는지 확인!
+
+
 
 '''
 예시
@@ -56,9 +63,9 @@ urlpatterns = [
     path('api/realtime_candle/<str:market>/<str:interval>/<str:symbol>/', views_stock_coin.get_realtime_candle_data, name='realtime_candle'), #심볼에 해당하는 현재가 조회
     path('api/get_batch_prices/', views_stock_coin.get_batch_current_prices, name='get_batch_current_prices_api'),#모든 종목 현재가 일괄 조회
 
-    path("oversea_news/", views_stock_coin.oversea_news, name="oversea_stock_ask"),
-    path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>", views_stock_coin.load_stock_coin_data, name="oversea_stock_ask"), #가격(해외주식, 코인 통합)
-    path("oversea_ask_api/<str:data_type_or_interval>/<str:symbol>/<str:exchange_code>", views_stock_coin.load_stock_coin_ASK_data, name="oversea_stock_ask_data"), #호가(해외주식, 코인 통합)
+    path("oversea_news/", views_stock_coin.oversea_news, name="oversea_stock_ask"),         #뉴스
+    path("oversea_api/<str:minute>/<str:symbol>/<str:exchange_code>/", views_stock_coin.load_stock_coin_data, name="oversea_stock_ask"), #가격(해외주식, 코인 통합)
+    path("oversea_ask_api/<str:data_type_or_interval>/<str:symbol>/<str:exchange_code>/", views_stock_coin.load_stock_coin_ASK_data, name="oversea_stock_ask_data"), #호가(해외주식, 코인 통합)
     path("oversea_past_api/<str:minute>/<str:symbol>/<str:data_number>/", views_stock_coin.oversea_past_api, name="oversea_past_stock_ask"), #과거 시뮬레이션용 데이터
 
     # 코인 데이터
@@ -109,6 +116,24 @@ urlpatterns = [
     path('ajax/check_nickname/', views_main.check_nickname_view, name='check_nickname'),
     path('ajax/send_otp/', views_main.send_otp_view, name='send_otp'),
     path('ajax/verify_otp/', views_main.verify_otp_view, name='verify_otp'),
+
+
+
+
+
+
+    ###################################################### 앱 전용 API URL
+    path('api/trade/process_result/app/', views_app.AppTradeProcessAPI.as_view(), name='process_trade_result_api'),
+    path('api/get-csrf-token/', views_main.get_csrf_token_api, name='get_csrf_token_api'),  # 토큰 가져오기
+    #path('api/app/login/', views_app.app_login_api, name='app_login_api'),  #로그인
+    path('api/app/register/', views_app.app_register_api, name='app_register_api'), # 회원가입
+    path('api/load_portfolio/app/', views_app.app_load_portfolio_api, name='load_portfolio_api'),  # 포폴 DB에서 로드
+
+
+    # 앱 전용 인증 API (JWT 사용)
+    path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'), # 로그인 (토큰 발급)
+    path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), # 토큰 갱신
+    path('api/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'), # 토큰 유효성 검사 (선택)
 
 ]
 

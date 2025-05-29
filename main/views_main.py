@@ -146,7 +146,11 @@ import json
 from django.contrib.auth import get_user_model
 from .models import Holding # 모델 임포트 가정
 
+from django.middleware.csrf import get_token
+from django.http import JsonResponse
 
+def get_csrf_token_api(request):
+    return JsonResponse({'csrfToken': get_token(request)})
 
 GUEST_MAX_USAGE_SECONDS = 1 * 60  # 비로그인 사용자 하루 최대 이용 시간 (1분)
 LOGGED_IN_USAGE_FEE = Decimal('0.1')  # 로그인 사용자 시간당 차감 코인

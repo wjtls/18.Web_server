@@ -197,6 +197,7 @@ def AI_trader_1_get_data(request):
         print(f"학습 이후 구간 수익률 계산 중 예상치 못한 오류 발생: {e}")
         real_trading_profit_rate = None  # 오류 발생 시 수익률 없음으로 처리
 
+
     # JSON 형태로 반환
     return JsonResponse({
         'pv': pv_data,
@@ -225,7 +226,7 @@ def AI_trader_2_get_data(request):
     # 현재 디렉토리에서 상위 디렉토리로 이동한 후 a_FRDdata_api 폴더로 이동
     base_path = os.path.join(current_dir, "..","..", "b_strategy_AI")
 
-    with open(f'{base_path}/2_AI_APPO_LS_stock_2/traj/backtest_result.json', 'r') as file:
+    with open(f'{base_path}/2_AI_APPO_LS_stock_TQQQ_61_ver2/traj/backtest_result.json', 'r') as file:
         for line in file:
             data.append(json.loads(line.strip()))
 
@@ -373,7 +374,7 @@ def AI_trader_3_get_data(request):
     # 현재 디렉토리에서 상위 디렉토리로 이동한 후 a_FRDdata_api 폴더로 이동
     base_path = os.path.join(current_dir, "..","..", "b_strategy_AI")
 
-    with open(f'{base_path}/2_AI_APPO_LS_stock_TQQQ_61_ver2/traj/backtest_result.json', 'r') as file:
+    with open(f'{base_path}/2_AI_APPO_LS_stock_TQQQ_61_ver3/traj/backtest_result.json', 'r') as file:
         for line in file:
             data.append(json.loads(line.strip()))
 
@@ -435,7 +436,7 @@ def AI_trader_3_get_data(request):
     # --- 학습 이후 구간 수익률 계산 로직 추가 ---
     real_trading_profit_rate = None  # 계산된 '학습 이후 구간' 수익률을 저장할 변수
     # 날짜 형식은 date_data의 형식과 일치해야 함
-    training_end_date_str = '2025-05-01 00:00:00'
+    training_end_date_str = '2025-04-10 00:00:00'
     try:
         # 기준 날짜를 datetime 객체로 변환
         training_end_date = datetime.strptime(training_end_date_str, '%Y-%m-%d %H:%M:%S')  # <- 날짜 형식 맞춰 파싱
