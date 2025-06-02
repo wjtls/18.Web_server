@@ -1,7 +1,12 @@
 # 앱에서 사용되는 api
 
 # main/views_app.py
-
+import json
+import random
+import os
+from pathlib import Path
+from django.http import JsonResponse, HttpResponseNotFound, HttpResponseServerError
+from django.views.decorators.http import require_GET
 import json
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login as django_login  # login 함수 이름 충돌 방지
@@ -248,6 +253,108 @@ def app_load_portfolio_api(request):
         # return JsonResponse({'success': False, 'message': '포트폴리오 데이터를 가져오는데 실패했습니다.', 'error': str(e)}, status=500)
 
 
+
+
+
+
+# --- 퀴즈 데이터가 저장된 기본 경로 설정 ---
+# Quiz_data_create.py 에서의 OUTPUT_QUIZ_DATA_DIR 경로와 동일하게 설정합니다.
+# 이 경로는 실제 환경에 맞게 조정될 수 있습니다. Django settings 등을 활용하는 것도 좋은 방법입니다.
+QUIZ_DATA_BASE_DIR = Path(r'D:\AI_pycharm\pythonProject\3_AI_LLM_finance\a_FRDdata_api\price_Quiz_data')
+
+@require_GET  # 이 API는 GET 요청으로 호출된다고 가정
+def load_platform_quiz_data(request):
+    """
+    플랫폼에서 사용할 퀴즈 데이터를 랜덤으로 선택하여 반환하는 API.
+    price_Quiz_data 폴더 내의 랜덤한 종목의 랜덤한 퀴즈 1개를 반환한다.
+    """
+    try:
+        # 1. QUIZ_DATA_BASE_DIR 하위의 심볼 디렉토리 목록 가져오기
+        if not QUIZ_DATA_BASE_DIR.exists() or not QUIZ_DATA_BASE_DIR.is_dir():
+            return JsonResponse({'error': '퀴즈 데이터 기본 디렉토리를 찾을 수 없습니다.', 'code': 'ERR_QUIZ_DIR_NOT_FOUND'}, status=500)
+
+        symbol_dirs = [d for d in QUIZ_DATA_BASE_DIR.iterdir() if d.is_dir()]
+
+        if not symbol_dirs:
+            return JsonResponse({'error': '처리할 심볼 디렉토리가 없습니다. 퀴즈 데이터를 먼저 생성해주세요.', 'code': 'ERR_NO_SYMBOL_DIRS'}, status=404)
+
+        # 2. 심볼 디렉토리 중 하나를 랜덤하게 선택
+        selected_symbol_dir = random.choice(symbol_dirs)
+        symbol_name = selected_symbol_dir.name  # 디렉토리 이름이 심볼명 (예: TQQQ)
+
+        # 3. 선택된 심볼 디렉토리에서 quizzes_{심볼명}.json 파일 경로 구성
+        quiz_file_name = f"quizzes_{symbol_name}.json"
+        quiz_file_path = selected_symbol_dir / quiz_file_name
+
+        if not quiz_file_path.exists() or not quiz_file_path.is_file():
+            error_msg = f"'{symbol_name}' 심볼에 대한 퀴즈 파일을 찾을 수 없습니다: {quiz_file_name}"
+            return JsonResponse({'error': error_msg, 'code': 'ERR_QUIZ_FILE_NOT_FOUND', 'symbol': symbol_name}, status=404)
+
+        # 4. JSON 파일 읽기
+        with open(quiz_file_path, 'r', encoding='utf-8') as f:
+            all_quizzes_for_symbol = json.load(f)
+
+        if not isinstance(all_quizzes_for_symbol, list) or not all_quizzes_for_symbol:
+            error_msg = f"'{symbol_name}' 심볼의 퀴즈 파일에 유효한 퀴즈 데이터가 없거나 비어있습니다."
+            return JsonResponse({'error': error_msg, 'code': 'ERR_NO_QUIZZES_IN_FILE', 'symbol': symbol_name}, status=404)
+
+        # 5. 로드된 퀴즈 리스트에서 퀴즈 하나를 랜덤하게 선택
+        selected_quiz = random.choice(all_quizzes_for_symbol)
+
+        # 6. 선택된 퀴즈 데이터를 JsonResponse로 반환
+        # ensure_ascii=False 는 유니코드 문자(한글 등)가 깨지지 않도록 합니다.
+        # json_dumps_params={'indent': 2} 는 개발 중 응답을 보기 편하게 하기 위함이며, 프로덕션에서는 불필요할 수 있습니다.
+        return JsonResponse(selected_quiz, safe=False, json_dumps_params={'ensure_ascii': False}) # safe=False는 딕셔너리 외의 객체(여기서는 리스트 내 딕셔너리)를 직렬화하기 위함
+
+    except FileNotFoundError:
+        # QUIZ_DATA_BASE_DIR 자체가 없는 경우 등 (위에서 이미 체크했지만, 추가 방어 로직)
+        return JsonResponse({'error': '요청 처리 중 파일 경로 관련 오류가 발생했습니다.', 'code': 'ERR_FILE_SYSTEM_ERROR'}, status=500)
+    except json.JSONDecodeError:
+        # JSON 파일 내용이 손상되었을 경우
+        return JsonResponse({'error': '퀴즈 데이터 파일을 파싱하는 중 오류가 발생했습니다. 파일 형식을 확인해주세요.', 'code': 'ERR_JSON_DECODE'}, status=500)
+    except Exception as e:
+        # 기타 예기치 않은 모든 오류 처리
+        # 실제 운영 환경에서는 오류 로깅이 중요합니다.
+        print(f"[API 오류] load_platform_quiz_data: {str(e)}") # 서버 로그에 오류 기록
+        traceback.print_exc() # 개발 중 상세 오류 확인
+        return JsonResponse({'error': f'퀴즈 데이터를 불러오는 중 서버 내부 오류가 발생했습니다: {str(e)}', 'code': 'ERR_UNEXPECTED_SERVER_ERROR'}, status=500)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -470,3 +577,7 @@ class AppTradeProcessAPI(APIView):
                 'timestamp': new_trade.timestamp.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
                 'reward_error_details': str(reward_error)
             }, status=status.HTTP_200_OK)  # 또는 status.HTTP_207_MULTI_STATUS
+
+
+
+

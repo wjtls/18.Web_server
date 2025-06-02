@@ -128,7 +128,7 @@ urlpatterns = [
     #path('api/app/login/', views_app.app_login_api, name='app_login_api'),  #로그인
     path('api/app/register/', views_app.app_register_api, name='app_register_api'), # 회원가입
     path('api/load_portfolio/app/', views_app.app_load_portfolio_api, name='load_portfolio_api'),  # 포폴 DB에서 로드
-
+    path('api/platform-quiz/', views_app.load_platform_quiz_data, name='load_platform_quiz_data'), #퀴즈데이터 호출
 
     # 앱 전용 인증 API (JWT 사용)
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'), # 로그인 (토큰 발급)
