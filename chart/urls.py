@@ -18,7 +18,9 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings # MEDIA 파일 서빙을 위해
 from django.conf.urls.static import static # MEDIA 파일 서빙을 위해
+from django.urls import path
 
+app_name = 'chart' # 앱 네임스페이스 지정
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("",include("main.urls")),

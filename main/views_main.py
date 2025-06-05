@@ -16,6 +16,13 @@ from django.urls import reverse
 import random
 #Holding/Trade 모델이 별도로 있다면 임포트
 from .models import Holding
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from django.contrib.auth import get_user_model
+# 위에서 정의한 Serializer 임포트
+User = get_user_model()
 
 
 from django.shortcuts import render, redirect
@@ -1478,17 +1485,6 @@ def account_delete_view(request):
 
 
 
-
-
-
-
-
-
-
-User = get_user_model()
-
-
-
 @login_required # 시뮬레이터 페이지는 로그인 필수 가정
 def index2_simulator_page_backup(request): # ★ 시뮬레이터 HTML 페이지 렌더링 전용 뷰 ★
     """ 시뮬레이터 HTML 페이지만 렌더링하는 뷰 """
@@ -1498,3 +1494,7 @@ def index2_simulator_page_backup(request): # ★ 시뮬레이터 HTML 페이지 
     }
     # 템플릿 파일 경로는 실제 프로젝트 구조에 맞게 확인 필요
     return render(request, 'main/index2_simulator.html', context)
+
+
+
+

@@ -22,11 +22,12 @@ api_urlpatterns = [
     # User Search & Profile APIs
     path('users/', app_views.UserListAPIView.as_view(), name='api_user_list'),
     path('users/search/', app_views.UserSearchAPIView.as_view(), name='api_user_search'),
-    path('users/<str:username>/profile/', app_views.UserProfileAPIView.as_view(), name='api_user_profile'),
     path('users/<str:username_to_follow>/follow_toggle/', app_views.FollowToggleAPIView.as_view(),name='api_follow_toggle'),
     path('users/<str:username>/following/', app_views.FollowingListAPIView.as_view(), name='api_user_following'),
     path('users/<str:username>/followers/', app_views.FollowersListAPIView.as_view(), name='api_user_followers'),
     path('posts/followed/', app_views.FollowedPostsAPIView.as_view(), name='api_posts_followed'),
+    path('users/<str:username>/profile/', app_views.UserProfileAPIView.as_view(), name='api_user_profile'), #대상유저 프로필
+    path('users/profile/', app_views.CurrentUserProfileAPIView.as_view(), name='api_current_user_profile'), # 내프로필
 
 
     # Problem APIs

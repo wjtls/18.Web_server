@@ -1,202 +1,195 @@
+# board/app_views.py
+
+# 필요한 모듈들을 한 번만 깔끔하게 import 합니다.
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q  # Q 객체 임포트
-
-from rest_framework import generics, permissions, status, filters
-from rest_framework.response import Response
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.parsers import MultiPartParser, FormParser  # 파일 업로드용
-from django_filters.rest_framework import DjangoFilterBackend
-
-from .models import Post, Comment, LikeDislike, UserFollow, Problem, ProblemChoice, UserProblemAttempt
-from .serializers import (
-    PostSerializer, CommentSerializer, LikeDislikeSerializer, UserFollowSerializer,
-    ProblemSerializer, UserProblemAttemptSerializer, UserProfileSerializer,
-    AuthorDisplaySerializer  # 사용자 검색용
-)
-from .permissions import IsOwnerOrReadOnly, IsStaffOrReadOnly  # 커스텀 권한
-
-
-
-
-from django.contrib.auth import get_user_model
-from django.shortcuts import get_object_or_404
-from django.contrib.contenttypes.models import ContentType
-from django.db.models import Q
+from django.db.models import Q, Count
+from django.db import transaction
 
 from rest_framework import generics, permissions, status, filters
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
+from main.views_blockchain import check_and_update_user_subscription #구독확인
 
-# UserFollow 모델을 가져오기 위해 models에서 모든 것을 가져오거나 특정 모델만 지정합니다.
-from .models import Post, Comment, LikeDislike, UserFollow, Problem, ProblemChoice, UserProblemAttempt
+# .models에서 필요한 모델들을 import 합니다.
+from .models import (
+    Post, Comment, LikeDislike, UserFollow, Problem, ProblemChoice,
+    UserProblemAttempt, PostFile # PostFile 추가 (PostSerializer에서 사용)
+)
+# .serializers에서 필요한 Serializer들을 import 합니다.
 from .serializers import (
     PostSerializer, CommentSerializer, LikeDislikeSerializer, UserFollowSerializer,
     ProblemSerializer, UserProblemAttemptSerializer, UserProfileSerializer,
-    AuthorDisplaySerializer
+    AuthorDisplaySerializer,
+    UserSummarySerializer  # <<<--- UserSummarySerializer를 명시적으로 포함!
 )
 from .permissions import IsOwnerOrReadOnly, IsStaffOrReadOnly
-from django.db.models import Count, Q # Q 객체는 이미 임포트되어 있을 수 있습니다. Count 추가
-from .models import Post, Comment, LikeDislike, UserFollow, Problem, ProblemChoice, UserProblemAttempt # LikeDislike 임포트 확인
 
 User = get_user_model()
 
+# --- Current User Profile API View ---
+class CurrentUserProfileAPIView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-# --- 기존 Post API Views (수정) ---
+    @transaction.atomic # 트랜잭션으로 감싸기
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            # 요청 시점에서 DB로부터 최신 사용자 정보를 가져오고, 업데이트를 위해 잠금(lock)
+            user_instance = User.objects.select_for_update().get(pk=request.user.pk)
+        except User.DoesNotExist:
+            return Response({"detail": "사용자를 찾을 수 없습니다."}, status=status.HTTP_404_NOT_FOUND)
+
+        # --- 구독 만료 체크 ---
+        print(f"\n[API VIEW - CurrentUserProfileAPIView (retrieve)] User: '{user_instance.username}' - Attempting subscription check.")
+        subscription_updated = check_and_update_user_subscription(user_instance) # 내부에서 DB 저장 발생 가능
+
+        if subscription_updated:
+            # check_and_update_user_subscription 함수 내에서 DB가 변경되었으므로,
+            # 현재 user_instance 객체도 DB와 동일한 최신 상태를 갖도록 refresh
+            user_instance.refresh_from_db()
+            print(f"[API VIEW - CurrentUserProfileAPIView (retrieve)] User: '{user_instance.username}' - Subscription was updated by check. Plan after refresh: '{user_instance.subscription_plan}'")
+        else:
+            # 이미 FREE이거나, 아직 만료되지 않은 경우 등 DB 변경이 없었던 경우
+            print(f"[API VIEW - CurrentUserProfileAPIView (retrieve)] User: '{user_instance.username}' - Subscription was NOT updated by check.")
+        # --- 구독 만료 체크 종료 ---
+
+        # 최종적으로 (업데이트되었을 수도 있는) user_instance를 직렬화하여 반환
+        serializer = self.get_serializer(user_instance)
+        return Response(serializer.data)
+
+# --- Post API Views ---
 class PostListCreateAPIView(generics.ListCreateAPIView):
+    # ... (이하 기존 PostListCreateAPIView 코드와 동일하게 유지)
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
     filterset_fields = ['is_notice', 'author__username', 'is_anonymous']
     search_fields = ['title', 'content', 'author__username', 'author__nickname']
-    # 어노테이트된 필드명으로 변경
     ordering_fields = ['created_at', 'is_pinned', 'annotated_likes_count', 'annotated_comment_count']
 
     def get_queryset(self):
         queryset = Post.objects.select_related('author').prefetch_related('files', 'comments', 'likes_dislikes')
-
         queryset = queryset.annotate(
-            # 어노테이션 필드 이름을 모델 프로퍼티와 다르게 지정
-            annotated_likes_count=Count('likes_dislikes', filter=Q(likes_dislikes__vote_type=LikeDislike.LIKE),
-                                        distinct=True),
-            annotated_comment_count=Count('comments', distinct=True)  # 댓글 수도 중복 방지 위해 distinct=True 고려
+            annotated_likes_count=Count('likes_dislikes', filter=Q(likes_dislikes__vote_type=LikeDislike.LIKE), distinct=True),
+            annotated_comment_count=Count('comments', distinct=True)
         )
         return queryset.all()
 
     def perform_create(self, serializer):
-        serializer.save()
-
-
+        serializer.save() # PostSerializer의 create에서 author 처리 가정
 
 class PostDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    # ... (이하 기존 PostDetailAPIView 코드와 동일하게 유지)
     queryset = Post.objects.select_related('author').prefetch_related('files', 'comments', 'likes_dislikes').all()
     serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]  # 수정/삭제는 작성자 또는 관리자만
-    parser_classes = [MultiPartParser, FormParser]  # 파일 수정도 고려 (현재 Serializer는 제한적)
-
-    # perform_update, perform_destroy는 기본 동작 사용 또는 필요시 오버라이드
-
-
-class UserListAPIView(generics.ListAPIView):
-    """
-    사용자 목록을 반환합니다. 추천 사용자 등에 활용될 수 있습니다.
-    정렬 및 필터링은 필요에 따라 추가할 수 있습니다.
-    """
-    queryset = User.objects.filter(is_active=True).order_by('-date_joined')  #  최근 가입자 순
-    serializer_class = AuthorDisplaySerializer  # 프로필 이미지 등을 포함하는 Serializer
-    permission_classes = [permissions.AllowAny]  # 누구나 볼 수 있도록 설정 (또는 IsAuthenticated)
-    filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]  # 기본 필터 추가
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]
 
 
 # --- Comment API Views ---
 class CommentListCreateAPIView(generics.ListCreateAPIView):
+    # ... (이하 기존 CommentListCreateAPIView 코드와 동일하게 유지)
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-
     def get_queryset(self):
         post_pk = self.kwargs.get('post_pk')
         post = get_object_or_404(Post, pk=post_pk)
-        # 최상위 댓글만 가져오기 (parent_comment=None)
-        return Comment.objects.filter(post=post, parent_comment=None).select_related('author').prefetch_related(
-            'replies', 'likes_dislikes').all()
-
+        return Comment.objects.filter(post=post, parent_comment=None).select_related('author').prefetch_related('replies', 'likes_dislikes').all()
     def perform_create(self, serializer):
         post_pk = self.kwargs.get('post_pk')
         post = get_object_or_404(Post, pk=post_pk)
-        # serializer.save(author=self.request.user, post=post) # Serializer의 create에서 author 처리
         serializer.save(post=post)
 
-
 class CommentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    # ... (이하 기존 CommentDetailAPIView 코드와 동일하게 유지)
     serializer_class = CommentSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
-
     def get_queryset(self):
-        post_pk = self.kwargs.get('post_pk')  # URL에서 post_pk를 받도록 설정 필요
-        return Comment.objects.filter(post_id=post_pk).select_related('author').prefetch_related('replies',
-                                                                                                 'likes_dislikes').all()
-
-    # lookup_url_kwarg = 'comment_pk' # URL에서 댓글 pk를 comment_pk로 받는 경우
-
+        post_pk = self.kwargs.get('post_pk')
+        return Comment.objects.filter(post_id=post_pk).select_related('author').prefetch_related('replies','likes_dislikes').all()
 
 # --- Like/Dislike API View ---
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def vote_content_object(request, content_type_id, object_id, vote_type_str):
-    """
-    게시글 또는 댓글에 좋아요/싫어요를 토글합니다.
-    vote_type_str: 'like' 또는 'dislike'
-    """
+    # ... (이하 기존 vote_content_object 코드와 동일하게 유지)
     try:
         content_type = ContentType.objects.get_for_id(content_type_id)
         target_model = content_type.model_class()
         target_object = get_object_or_404(target_model, pk=object_id)
     except ContentType.DoesNotExist:
         return Response({"error": "잘못된 컨텐츠 타입입니다."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if vote_type_str.lower() == 'like':
-        vote_type = LikeDislike.LIKE
-    elif vote_type_str.lower() == 'dislike':
-        vote_type = LikeDislike.DISLIKE
-    else:
-        return Response({"error": "잘못된 투표 타입입니다. ('like' 또는 'dislike')"}, status=status.HTTP_400_BAD_REQUEST)
-
-    existing_vote = LikeDislike.objects.filter(
-        user=request.user, content_type=content_type, object_id=object_id
-    ).first()
-
+    if vote_type_str.lower() == 'like': vote_type = LikeDislike.LIKE
+    elif vote_type_str.lower() == 'dislike': vote_type = LikeDislike.DISLIKE
+    else: return Response({"error": "잘못된 투표 타입입니다. ('like' 또는 'dislike')"}, status=status.HTTP_400_BAD_REQUEST)
+    existing_vote = LikeDislike.objects.filter(user=request.user, content_type=content_type, object_id=object_id).first()
     if existing_vote:
-        if existing_vote.vote_type == vote_type:  # 같은 투표: 취소 (삭제)
+        if existing_vote.vote_type == vote_type:
             existing_vote.delete()
             return Response({"status": "vote_cancelled"}, status=status.HTTP_200_OK)
-        else:  # 다른 투표: 변경 (업데이트)
+        else:
             existing_vote.vote_type = vote_type
             existing_vote.save()
             serializer = LikeDislikeSerializer(existing_vote)
             return Response(serializer.data, status=status.HTTP_200_OK)
-    else:  # 새 투표: 생성
-        new_vote = LikeDislike.objects.create(
-            user=request.user,
-            content_type=content_type,
-            object_id=object_id,
-            vote_type=vote_type
-        )
+    else:
+        new_vote = LikeDislike.objects.create(user=request.user, content_type=content_type, object_id=object_id, vote_type=vote_type)
         serializer = LikeDislikeSerializer(new_vote)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-
-# --- User Search and Profile API Views ---
+# --- User Search and Other User Profile API Views ---
 class UserSearchAPIView(generics.ListAPIView):
-    """사용자 검색 (닉네임 또는 아이디)"""
+    # ... (이하 기존 UserSearchAPIView 코드와 동일하게 유지)
     queryset = User.objects.all()
-    serializer_class = AuthorDisplaySerializer  # 간단한 정보만 표시
-    permission_classes = [permissions.AllowAny]  # 누구나 검색 가능
+    serializer_class = AuthorDisplaySerializer
+    permission_classes = [permissions.AllowAny]
     filter_backends = [filters.SearchFilter]
-    search_fields = ['username', 'nickname']  # User 모델에 nickname 필드 가정
+    search_fields = ['username', 'nickname']
+
+    def get_queryset(self):
+        return User.objects.filter(is_active=True)
+    def get_serializer_context(self):
+        """
+        Serializer에게 request 객체를 context로 전달
+        """
+        context = super().get_serializer_context()
+        context.update({'request': self.request})
+        return context
 
 
-class UserProfileAPIView(generics.RetrieveAPIView):
-    """사용자 프로필 상세 조회"""
-    queryset = User.objects.prefetch_related(
-        'following_set',  # 내가 팔로우 하는 사람들
-        'follower_set',  # 나를 팔로우 하는 사람들
-        # 'board_posts', 
-        # 'board_problems'
-    ).all()
+# --- UserListAPIView (사용자 목록 - 추천 등) ---
+class UserListAPIView(generics.ListAPIView):
+    queryset = User.objects.filter(is_active=True).order_by('-date_joined')
+    serializer_class = AuthorDisplaySerializer
+    permission_classes = [permissions.AllowAny]
+    filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]
+    ordering_fields = ['date_joined', 'username']  # 예시: 필요한 경우 정렬 필드 지정
+    search_fields = ['username', 'nickname'] # 예시: UserListAPIView에서도 검색을 지원한다면
+    def get_serializer_context(self):
+        """
+        Serializer에게 request 객체를 context로 전달합니다.
+        """
+        context = super().get_serializer_context()
+        context.update({'request': self.request})
+        return context
+
+class UserProfileAPIView(generics.RetrieveAPIView): # 다른 사용자 프로필 조회용
+    # ... (이하 기존 UserProfileAPIView 코드와 동일하게 유지)
+    queryset = User.objects.prefetch_related('following_set','follower_set').all()
     serializer_class = UserProfileSerializer
-    permission_classes = [permissions.AllowAny]  # 누구나 프로필 조회 가능
-    lookup_field = 'username'  # URL에서 username으로 사용자 조회 / 또는 'pk'
-
+    permission_classes = [permissions.AllowAny]
+    lookup_field = 'username'
 
 # --- User Follow API Views ---
 class FollowToggleAPIView(generics.GenericAPIView):
     """사용자 팔로우/언팔로우 토글"""
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = UserFollowSerializer  # 응답용 (실제 생성은 직접)
+    serializer_class = UserFollowSerializer  # <<<--- serializer_class 정의!
 
     def post(self, request, username_to_follow):
         user_to_follow = get_object_or_404(User, username=username_to_follow)
@@ -205,103 +198,101 @@ class FollowToggleAPIView(generics.GenericAPIView):
         if follower == user_to_follow:
             return Response({"error": "자기 자신을 팔로우할 수 없습니다."}, status=status.HTTP_400_BAD_REQUEST)
 
-        follow_instance, created = UserFollow.objects.get_or_create(
-            follower=follower,
-            following=user_to_follow
-        )
+        try:
+            follow_instance = UserFollow.objects.filter(follower=follower, following=user_to_follow).first()
 
-        if not created:  # 이미 존재하면 (get_or_create가 get을 한 경우) -> 언팔로우
-            follow_instance.delete()
-            return Response({"status": "unfollowed"}, status=status.HTTP_200_OK)
-        else:  # 새로 생성된 경우 -> 팔로우 성공
-            serializer = self.get_serializer(follow_instance)
-            return Response({"status": "followed", "data": serializer.data}, status=status.HTTP_201_CREATED)
-
+            if follow_instance:
+                # 이미 팔로우 중이므로 언팔로우
+                follow_instance.delete()
+                return Response({"status": "unfollowed"}, status=status.HTTP_200_OK)
+            else:
+                # 팔로우 관계 생성
+                # UserFollowSerializer의 create 메소드에서 follower는 자동으로 현재 유저로 설정될 수 있으므로,
+                # 여기서는 following 정보만 전달해도 될 수 있습니다. (Serializer 구현에 따라 다름)
+                # 현재 UserFollowSerializer는 following_username을 받아서 처리하므로,
+                # 직접 UserFollow.objects.create를 사용하는 것이 더 명확할 수 있습니다.
+                new_follow = UserFollow.objects.create(follower=follower, following=user_to_follow)
+                # 생성된 인스턴스를 응답으로 보내기 위해 serializer 사용
+                serializer = self.get_serializer(new_follow)
+                return Response({"status": "followed", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        except IntegrityError:
+            # 이 경우는 거의 발생하지 않아야 하지만, 혹시 모를 동시성 문제로 create 시점에 이미 레코드가 생긴 경우
+            return Response({"error": "팔로우 처리 중 데이터 충돌이 발생했습니다. 다시 시도해주세요."}, status=status.HTTP_409_CONFLICT)
+        except Exception as e:
+            # 기타 예외 처리
+            return Response({"error": f"오류 발생: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class FollowingListAPIView(generics.ListAPIView):
-    """특정 사용자가 팔로우하는 사용자 목록"""
-    serializer_class = AuthorDisplaySerializer  # 팔로잉하는 사용자들의 간략 프로필
-    permission_classes = [permissions.AllowAny]
+    serializer_class = UserSummarySerializer # UserSummarySerializer 사용 (이제 import 됨)
+    permission_classes = [permissions.AllowAny] # 또는 IsAuthenticated
 
     def get_queryset(self):
         username = self.kwargs.get('username')
-        user = get_object_or_404(User, username=username)
-        # user.following_set.all()은 UserFollow 객체 목록을 반환
-        # 이 UserFollow 객체들에서 'following' 필드(User 객체)를 가져와야 함
-        return User.objects.filter(follower_set__follower=user)  # UserFollow의 related_name 사용
+        target_user = get_object_or_404(User, username=username)
+        # UserFollow 모델에서 follower 필드가 target_user인 UserFollow 객체들을 찾고,
+        # 그 객체들의 'following' 필드 (User 객체)들을 반환합니다.
+        # UserFollow.follower의 related_name이 'following_set'이고 UserFollow.following의 related_name이 'follower_set'인 경우
+        # return User.objects.filter(follower_set__follower=target_user)
+        # 또는 UserFollow 모델을 직접 쿼리:
+        following_relations = UserFollow.objects.filter(follower=target_user).select_related('following')
+        return [relation.following for relation in following_relations]
 
 
 class FollowersListAPIView(generics.ListAPIView):
-    """특정 사용자를 팔로우하는 사용자 목록"""
-    serializer_class = AuthorDisplaySerializer  # 팔로워들의 간략 프로필
-    permission_classes = [permissions.AllowAny]
+    serializer_class = UserSummarySerializer # UserSummarySerializer 사용 (이제 import 됨)
+    permission_classes = [permissions.AllowAny] # 또는 IsAuthenticated
 
     def get_queryset(self):
         username = self.kwargs.get('username')
-        user = get_object_or_404(User, username=username)
-        # user.follower_set.all()은 UserFollow 객체 목록을 반환
-        # 이 UserFollow 객체들에서 'follower' 필드(User 객체)를 가져와야 함
-        return User.objects.filter(following_set__following=user)  # UserFollow의 related_name 사용
-
+        target_user = get_object_or_404(User, username=username)
+        # UserFollow 모델에서 following 필드가 target_user인 UserFollow 객체들을 찾고,
+        # 그 객체들의 'follower' 필드 (User 객체)들을 반환합니다.
+        # return User.objects.filter(following_set__following=target_user)
+        # 또는 UserFollow 모델을 직접 쿼리:
+        follower_relations = UserFollow.objects.filter(following=target_user).select_related('follower')
+        return [relation.follower for relation in follower_relations]
 
 # --- Problem API Views ---
 class ProblemListCreateAPIView(generics.ListCreateAPIView):
+    # ... (이하 기존 ProblemListCreateAPIView 코드와 동일하게 유지)
     queryset = Problem.objects.select_related('author').prefetch_related('files', 'choices').all()
     serializer_class = ProblemSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]  # 문제 목록은 누구나, 생성은 로그인 사용자
-    parser_classes = [MultiPartParser, FormParser]  # 파일 업로드 지원
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
     filterset_fields = ['author__username']
     search_fields = ['title', 'content', 'author__username', 'author__nickname']
     ordering_fields = ['created_at']
-
     def perform_create(self, serializer):
-        # serializer.save(author=self.request.user) # Serializer의 create에서 처리
         serializer.save()
 
-
 class ProblemDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    # ... (이하 기존 ProblemDetailAPIView 코드와 동일하게 유지)
     queryset = Problem.objects.select_related('author').prefetch_related('files', 'choices').all()
     serializer_class = ProblemSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]  # 수정/삭제는 출제자 또는 관리자
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
     parser_classes = [MultiPartParser, FormParser]
 
-
 class UserProblemAttemptCreateAPIView(generics.CreateAPIView):
-    """사용자의 문제 풀이 시도 제출"""
+    # ... (이하 기존 UserProblemAttemptCreateAPIView 코드와 동일하게 유지)
     queryset = UserProblemAttempt.objects.all()
     serializer_class = UserProblemAttemptSerializer
-    permission_classes = [permissions.IsAuthenticated]  # 로그인한 사용자만 제출 가능
+    permission_classes = [permissions.IsAuthenticated]
 
-    # perform_create에서 user는 Serializer의 HiddenField로 자동 할당됨
-    # is_correct는 모델의 save() 메소드에서 자동 계산됨
-
-
+# --- Followed Posts API View ---
 class FollowedPostsAPIView(generics.ListAPIView):
+    # ... (이하 기존 FollowedPostsAPIView 코드와 동일하게 유지)
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.OrderingFilter, DjangoFilterBackend, filters.SearchFilter]
-    # 어노테이트된 필드명으로 변경
     ordering_fields = ['created_at', 'annotated_likes_count', 'annotated_comment_count']
-
-    # default_ordering = ['-created_at'] # 기본 정렬은 Post 모델의 Meta.ordering 또는 OrderingFilter 기본값 따름
-
     def get_queryset(self):
         user = self.request.user
-        users_i_follow = User.objects.filter(follower_set__follower=user)
-
-        queryset = Post.objects.filter(author__in=users_i_follow) \
-            .select_related('author') \
-            .prefetch_related('files', 'comments', 'likes_dislikes')
-
+        users_i_follow_relations = UserFollow.objects.filter(follower=user)
+        users_i_follow_qs = User.objects.filter(pk__in=users_i_follow_relations.values_list('following_id', flat=True))
+        queryset = Post.objects.filter(author__in=users_i_follow_qs).select_related('author').prefetch_related('files', 'comments', 'likes_dislikes')
         queryset = queryset.annotate(
-            # 어노테이션 필드 이름을 모델 프로퍼티와 다르게 지정
-            annotated_likes_count=Count('likes_dislikes', filter=Q(likes_dislikes__vote_type=LikeDislike.LIKE),
-                                        distinct=True),
+            annotated_likes_count=Count('likes_dislikes', filter=Q(likes_dislikes__vote_type=LikeDislike.LIKE), distinct=True),
             annotated_comment_count=Count('comments', distinct=True)
         )
-
-        # OrderingFilter가 URL 파라미터에 따라 정렬을 처리합니다.
-        # 기본 정렬은 Post 모델의 Meta.ordering을 따르도록 하거나, 여기서 명시적으로 .order_by()를 추가할 수 있습니다.
-        # 예: return queryset.order_by('-created_at')
         return queryset.all()

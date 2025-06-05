@@ -1,19 +1,24 @@
+#serializers.py
+
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from .models import Post, PostFile, Comment, LikeDislike, UserFollow, Problem, ProblemFile, ProblemChoice, UserProblemAttempt
 import json
-
+import generics
 User = get_user_model()
-
 class AuthorDisplaySerializer(serializers.ModelSerializer):
-    """작성자 정보 Serializer (게시글, 댓글, 문제 등에 사용)"""
     active_title_name = serializers.CharField(source='active_title.name', read_only=True, allow_null=True)
     active_title_color = serializers.SerializerMethodField(read_only=True)
     tier_info = serializers.SerializerMethodField(read_only=True)
     level = serializers.IntegerField(source='current_level', read_only=True, default=1)
     nickname = serializers.CharField(read_only=True, allow_blank=True, allow_null=True)
-    profile_image = serializers.ImageField(read_only=True) # <--- 이 줄 추가 (User 모델에 profile_image 필드 존재 가정)
+    # profile_image 대신 profile_image_url 사용
+    profile_image_url = serializers.SerializerMethodField(read_only=True)
+    # 추가된 필드들
+    nickname_color = serializers.CharField(read_only=True, allow_blank=True, allow_null=True) # User 모델의 필드명과 동일하게
+    prediction_success_rate = serializers.FloatField(source='prediction_accuracy', read_only=True)
+    is_followed_by_me = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
@@ -21,19 +26,33 @@ class AuthorDisplaySerializer(serializers.ModelSerializer):
             'id',
             'username',
             'nickname',
-            'profile_image',
+            'profile_image_url',
+            'nickname_color',
             'active_title_name',
             'active_title_color',
             'tier_info',
             'level',
+            'prediction_success_rate',
+            'is_followed_by_me',
         ]
 
+    def get_profile_image_url(self, obj):
+        if obj.profile_image and hasattr(obj.profile_image, 'url'):
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.profile_image.url)
+            return obj.profile_image.url
+        return None
+
     def get_active_title_color(self, obj):
+        # ... (기존과 동일)
         if hasattr(obj, 'active_title') and obj.active_title and hasattr(obj.active_title, 'default_display_color'):
             return obj.active_title.default_display_color
         return '#FFFFFF'
 
+
     def get_tier_info(self, obj):
+        # ... (기존과 동일)
         if hasattr(obj, 'get_tier_info') and callable(obj.get_tier_info):
             tier_data = obj.get_tier_info()
             return {
@@ -42,33 +61,61 @@ class AuthorDisplaySerializer(serializers.ModelSerializer):
             }
         return {'name': '정보 없음', 'image': ''}
 
+    def get_is_followed_by_me(self, obj):
+        request = self.context.get('request')
+        # request 객체와 로그인한 사용자가 있는지, 그리고 그 사용자가 인증되었는지 확인
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            # obj는 현재 직렬화 중인 사용자 객체 (프로필 주인)
+            # request.user는 현재 로그인한 사용자
+            if obj == request.user:  # 자기 자신인 경우
+                return None  # 또는 'self' 같은 특별한 값, 혹은 False (팔로우 버튼 안보이게)
+            return UserFollow.objects.filter(follower=request.user, following=obj).exists()
+        return False  # 로그인하지 않았거나 request context가 없으면 False 반환
+
 
 class UserProfileSerializer(AuthorDisplaySerializer):
-    """사용자 프로필 상세 정보 Serializer (팔로워/팔로잉 수 포함)"""
-    follower_count = serializers.SerializerMethodField()
-    following_count = serializers.SerializerMethodField()
-    # User 모델에 bio 필드가 있다고 가정하고 추가 (없다면 User 모델에 추가 필요)
-    bio = serializers.CharField(source='bio', read_only=True, allow_blank=True, allow_null=True)
-    # 사용자가 작성한 게시글 수 (User 모델에 board_posts related_name이 있다고 가정)
-    board_posts_count = serializers.IntegerField(source='board_posts.count', read_only=True)
-
-
+    follower_count = serializers.SerializerMethodField(read_only=True)
+    following_count = serializers.SerializerMethodField(read_only=True)
+    bio = serializers.CharField(allow_blank=True, allow_null=True, required=False, max_length=150) # 'source' 없음
+    # 👇 'source="board_posts_count"' 삭제
+    board_posts_count = serializers.IntegerField(read_only=True) # User 모델의 board_posts_count 프로퍼티 사용
+    subscription_plan_display = serializers.SerializerMethodField()
     class Meta(AuthorDisplaySerializer.Meta):
         fields = AuthorDisplaySerializer.Meta.fields + [
             'follower_count',
             'following_count',
             'bio',
             'board_posts_count',
+
+
+            'subscription_plan',  # User 모델의 실제 필드
+            'subscription_plan_display',  # 위에서 선언한 SerializerMethodField
+            'subscription_expiry_date',  # User 모델의 실제 필드
         ]
-        # 만약 User 모델에 bio 필드가 직접 없다면, source를 UserProfile 등으로 변경하거나 해당 필드 제거 필요
 
     def get_follower_count(self, obj):
-        # User 모델의 follower_set (UserFollow 모델의 related_name)을 사용
-        return obj.follower_set.count() if hasattr(obj, 'follower_set') else 0
+        if hasattr(obj, 'get_followers_count'):
+            return obj.get_followers_count
+        return 0
 
     def get_following_count(self, obj):
-        # User 모델의 following_set (UserFollow 모델의 related_name)을 사용
-        return obj.following_set.count() if hasattr(obj, 'following_set') else 0
+        if hasattr(obj, 'get_following_count'):
+            return obj.get_following_count
+        return 0
+
+    def get_subscription_plan_display(self, obj):
+        # obj는 User 모델의 인스턴스입니다.
+        # User 모델에 get_subscription_plan_display() 메소드가 choices 때문에 자동으로 생성됩니다.
+        if hasattr(obj, 'get_subscription_plan_display'):
+            return obj.get_subscription_plan_display()
+        # 예외 처리: 만약 get_subscription_plan_display 메소드가 없다면 (거의 발생하지 않음),
+        # 그냥 subscription_plan 값을 반환할 수 있습니다.
+        return obj.subscription_plan
+    def update(self, instance, validated_data):
+        instance.bio = validated_data.get('bio', instance.bio)
+        instance.save()
+        return instance
+
 
 
 class PostFileSerializer(serializers.ModelSerializer):
@@ -431,3 +478,28 @@ class UserProblemAttemptSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("이미 이 문제를 풀었습니다.")
 
         return data
+
+
+class UserSummarySerializer(serializers.ModelSerializer): # 팔로워/팔로잉 목록용
+    profile_image_url = serializers.SerializerMethodField(read_only=True)
+    is_followed_by_me = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'nickname', 'profile_image_url', 'is_followed_by_me'] # 추가
+
+    def get_profile_image_url(self, obj):
+        # AuthorDisplaySerializer의 get_profile_image_url과 동일한 로직
+        if obj.profile_image and hasattr(obj.profile_image, 'url'):
+            request = self.context.get('request')
+            if request: return request.build_absolute_uri(obj.profile_image.url)
+            return obj.profile_image.url
+        return None
+
+    def get_is_followed_by_me(self, obj):
+        # AuthorDisplaySerializer의 get_is_followed_by_me와 동일한 로직
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            if obj == request.user: return None # 자기 자신
+            return UserFollow.objects.filter(follower=request.user, following=obj).exists()
+        return False

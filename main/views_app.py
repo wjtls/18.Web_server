@@ -14,6 +14,15 @@ from django.views.decorators.csrf import csrf_exempt  # API 테스트를 위해 
 from django.views.decorators.http import require_POST
 from django.db import IntegrityError
 from django.contrib.auth import get_user_model
+import json
+from decimal import Decimal, InvalidOperation
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt # 실제 프로덕션에서는 CSRF 보호를 적절히 설정해야 합니다.
+from django.views.decorators.http import require_POST
+from django.contrib.auth.decorators import login_required # AppContext의 getJson2에서 인증 헤더를 보낸다고 가정
+from django.db import transaction
+from django.contrib.auth import get_user_model
+
 User = get_user_model()
 
 @csrf_exempt  # << API 테스트를 위해 임시로 추가 (실제 운영 시에는 토큰 인증 등으로 대체)

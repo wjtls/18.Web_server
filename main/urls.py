@@ -9,6 +9,8 @@ from . import views_main
 from . import views_stock_coin
 from . import views_AI
 from . import views_app
+from . import views_blockchain
+
 from payments import views as payment_views
 
 # Django 내장 LoginView와 LogoutView 임포트
@@ -71,7 +73,6 @@ urlpatterns = [
     # 코인 데이터
     path("coin_list/", views_stock_coin.coin_list, name="coin_list"),
 
-
     # 해외주식 데이터
     path("oversea_list/", views_stock_coin.oversea_stock_list, name="oversea_stock_list"),
     path("oversea_NASD_list/", views_stock_coin.oversea_NASD_stock_list, name="oversea_stock_NASD_list"),
@@ -111,6 +112,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('allauth.urls')),
 
+
     # 회원가입 2차인증,닉네임,휴대폰인증 AJAX URLS
     path('ajax/check_username/', views_main.check_username_view, name='check_username'),
     path('ajax/check_nickname/', views_main.check_nickname_view, name='check_nickname'),
@@ -135,6 +137,14 @@ urlpatterns = [
     path('api/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'), # 토큰 갱신
     path('api/auth/token/verify/', TokenVerifyView.as_view(), name='token_verify'), # 토큰 유효성 검사 (선택)
 
+    #래퍼럴
+    path('api/v1/referrals/', include('referrals.urls', namespace='referrals_api')),
+
+    #코인가치, 상점
+    path('api/asi-coin/value/', views_blockchain.get_asi_coin_value, name='api_get_asi_coin_value'),
+    path('api/shop/purchase-item/', views_blockchain.PurchaseItemAPI.as_view(), name='api_purchase_item'),
+    path('api/shop/subscribe-plan/', views_blockchain.SubscribePlanAPI.as_view(), name='api_subscribe_plan'),
+    path('activate-title/', views_blockchain.ActivateTitleAPI.as_view(), name='activate_title'),
 ]
 
 # 배포
