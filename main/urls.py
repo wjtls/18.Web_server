@@ -10,6 +10,7 @@ from . import views_stock_coin
 from . import views_AI
 from . import views_app
 from . import views_blockchain
+from . import views_alarm
 
 from payments import views as payment_views
 
@@ -140,11 +141,21 @@ urlpatterns = [
     #래퍼럴
     path('api/v1/referrals/', include('referrals.urls', namespace='referrals_api')),
 
+    # AI 트레이더 알람 설정 API
+    path('api/device/register/', views_alarm.RegisterDeviceAPI.as_view(), name='api_device_register'),
+    path('api/alarms/status/', views_alarm.AlarmSettingsAPI.as_view(), name='api_alarm_settings_status'),
+    path('api/alarms/toggle/', views_alarm.AlarmSettingsAPI.as_view(), name='api_alarm_settings_toggle'),
+    path('api/alarms/quiz/', views_alarm.QuizAlarmSettingsAPI.as_view(), name='api_alarm_quiz_settings'),
+
     #코인가치, 상점
     path('api/asi-coin/value/', views_blockchain.get_asi_coin_value, name='api_get_asi_coin_value'),
     path('api/shop/purchase-item/', views_blockchain.PurchaseItemAPI.as_view(), name='api_purchase_item'),
     path('api/shop/subscribe-plan/', views_blockchain.SubscribePlanAPI.as_view(), name='api_subscribe_plan'),
     path('activate-title/', views_blockchain.ActivateTitleAPI.as_view(), name='activate_title'),
+    
+    #구글플레이 결제 검증
+
+    path('api/shop/verify-purchase/', views_blockchain.GooglePlayVerifyPurchaseAPI.as_view(),name='api_google_play_verify_purchase')
 ]
 
 # 배포

@@ -75,3 +75,46 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user'] = user_data
 
         return data
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##########################알람관련#############
+
+
+from rest_framework import serializers
+from .models import AlarmSubscription, UserDevice, Notification # 필요한 모델들을 임포트
+
+class AlarmSubscriptionSerializer(serializers.ModelSerializer):
+    """
+    AlarmSubscription 모델을 JSON으로 변환하기 위한 Serializer
+    """
+    class Meta:
+        model = AlarmSubscription
+        fields = ['trader_id', 'is_active'] # 앱에 보여줄 필드를 지정
+
+
+# 참고: 나중에 필요할 다른 Serializer들도 이 파일에 추가
+class UserDeviceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserDevice
+        fields = ['fcm_token', 'created_at']
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['id', 'title', 'message', 'created_at', 'is_read']
